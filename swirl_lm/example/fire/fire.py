@@ -76,8 +76,10 @@ class TerrainType(enum.Enum):
   # A leveled flat surface transition to a constant angle slope. The transition
   # point is at the center of the x axis.
   WEDGE = 3
+  # A ramp with an embedded canyon
+  CANYON = 4
   # Read the terrain map from a file.
-  FILE = 4
+  FILE = 5
 
 
 # Flags for the terrain initialization.
@@ -119,6 +121,36 @@ flags.DEFINE_float(
     'The slope of the flat surface with respect to the horizontal plane in the '
     'x direction (in degrees). Should be a number between -90 and 90.',
     allow_override=True)
+_CANYON_START = flags.DEFINE_float(
+    'canyon_start',
+    300,
+    'The starting location of the canyon along the x axis.',
+    allow_override=True,
+)
+_CANYON_LENGTH = flags.DEFINE_float(
+    'canyon_length',
+    200,
+    'The length of the embedded canyon along the x axis.',
+    allow_override=True
+)
+_CANYON_DEPTH = flags.DEFINE_float(
+    'canyon_depth',
+    50,
+    'The maximum depth of the canyon at its symmetry axis.',
+    allow_override=True
+)
+_CANYON_HALF_WIDTH = flags.DEFINE_float(
+    'canyon_half_width',
+    50,
+    'The half width of the canyon along the y axis.',
+    allow_override=True
+)
+_CANYON_Y_OFFSET = flags.DEFINE_float(
+    'canyon_y_offset',
+    250,
+    'The offset of the canyon center line along the y axis.',
+    allow_override=True,
+)
 
 flags.DEFINE_bool(
     'flat_surface_turbulent_inflow',
@@ -452,6 +484,7 @@ class Fire:
       self.h_0 = _FLAT_SURFACE_INITIAL_HEIGHT.value
       self.slope = FLAGS.flat_surface_slope
       x = tf.linspace(0.0, self.config.lx, self.config.fx)
+      y = tf.linspace(0.0, self.config.ly, self.config.fy)
 
       if _TERRAIN_TYPE.value == TerrainType.RAMP:
         profile = self.h_0 + tf.clip_by_value(
@@ -467,6 +500,37 @@ class Fire:
         profile = self.h_0 + tf.math.maximum(
             (x - 0.5 * self.config.lx) * tf.tan(self.slope * np.pi / 180.0), 0.0
         )
+      if _TERRAIN_TYPE.value == TerrainType.CANYON:
+        if (
+            (_CANYON_START.value - _FLAT_SURFACE_RAMP_START_POINT.value) *
+            tf.math.tan(self.slope * np.pi / 180.0) <= _CANYON_DEPTH.value
+        ):
+          raise ValueError(
+              f'The canyon depth value of {_CANYON_DEPTH.value} m '
+              'is too large and would result in negative '
+              'z-values.'
+          )
+        x_grid, y_grid = tf.meshgrid(x, y, indexing='ij')
+        ramp_profile = self.h_0 + tf.clip_by_value(
+            x - _FLAT_SURFACE_RAMP_START_POINT.value,
+            clip_value_min=0.0,
+            clip_value_max=_FLAT_SURFACE_RAMP_LENGTH.value,
+        ) * tf.tan(self.slope * np.pi / 180.0)
+        canyon_profile_x = -tf.clip_by_value(
+            (x - _CANYON_START.value) / _CANYON_LENGTH.value,
+            clip_value_min=0.0,
+            clip_value_max=1.0,
+        ) * _CANYON_DEPTH.value
+        canyon_profile_y = tf.clip_by_value(
+            (
+                _CANYON_HALF_WIDTH.value -
+                tf.abs(y_grid - _CANYON_Y_OFFSET.value)
+            ) / _CANYON_HALF_WIDTH.value,
+            clip_value_min=0.0,
+            clip_value_max=1.0
+        )
+        canyon_profile = canyon_profile_x[:, tf.newaxis] * canyon_profile_y
+        profile = ramp_profile[:, tf.newaxis] + canyon_profile
       else:
         profile = tf.zeros_like(x)
 
@@ -476,9 +540,14 @@ class Fire:
           clip_value_min=0.0,
       )
 
-      elevation = tf.transpose(
-          tf.maximum(tf.tile(profile[tf.newaxis, :], [self.config.fy, 1]), 0.0)
-      )
+      if _TERRAIN_TYPE.value == TerrainType.CANYON:
+        elevation = tf.maximum(profile, 0.0)
+      else:
+        elevation = tf.transpose(
+            tf.maximum(
+                tf.tile(profile[tf.newaxis, :], [self.config.fy, 1]), 0.0
+            )
+        )
 
     # Add obstacles if requested.
     if INCLUDE_OBSTACLES.value:
