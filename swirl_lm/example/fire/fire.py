@@ -133,12 +133,15 @@ _CANYON_LENGTH = flags.DEFINE_float(
     'The length of the embedded canyon along the x axis.',
     allow_override=True
 )
-_CANYON_DEPTH = flags.DEFINE_float(
-    'canyon_depth',
-    50,
-    'The maximum depth of the canyon at its symmetry axis.',
+_CENTER_SLOPE = flags.DEFINE_float(
+    'center_slope',
+    -5,
+    'The slope of the canyon center line along the x axis relative to the '
+    'slope of the ramp. Value should be negative for a canyon, and positive '
+    'for a mountain ridge. If `center_slope` is zero, a planar ramp is '
+    'retained, i.e., without embedded canyon.',
     allow_override=True
-)
+) 
 _CANYON_HALF_WIDTH = flags.DEFINE_float(
     'canyon_half_width',
     50,
@@ -501,35 +504,29 @@ class Fire:
             (x - 0.5 * self.config.lx) * tf.tan(self.slope * np.pi / 180.0), 0.0
         )
       if _TERRAIN_TYPE.value == TerrainType.CANYON:
-        if (
-            (_CANYON_START.value - _FLAT_SURFACE_RAMP_START_POINT.value) *
-            tf.math.tan(self.slope * np.pi / 180.0) <= _CANYON_DEPTH.value
-        ):
-          raise ValueError(
-              f'The canyon depth value of {_CANYON_DEPTH.value} m '
-              'is too large and would result in negative '
-              'z-values.'
-          )
         x_grid, y_grid = tf.meshgrid(x, y, indexing='ij')
         ramp_profile = self.h_0 + tf.clip_by_value(
             x - _FLAT_SURFACE_RAMP_START_POINT.value,
             clip_value_min=0.0,
             clip_value_max=_FLAT_SURFACE_RAMP_LENGTH.value,
         ) * tf.tan(self.slope * np.pi / 180.0)
-        canyon_profile_x = -tf.clip_by_value(
-            (x - _CANYON_START.value) / _CANYON_LENGTH.value,
+        canyon_centerline = self.h_0 + tf.clip_by_value(
+            (x - _CANYON_START.value),
+            clip_value_min=0.0,
+            clip_value_max=_CANYON_LENGTH.value
+        ) * tf.tan(_CENTER_SLOPE.value * np.pi / 180.0)
+        canyon_half_width_x = tf.clip_by_value(
+            (x - _CANYON_START.value) / (
+            _CANYON_LENGTH.value) * _CANYON_HALF_WIDTH.value,
+            clip_value_min=0.0,
+            clip_value_max=_CANYON_HALF_WIDTH.value
+        )
+        canyon_profile_y = tf.clip_by_value(
+            (canyon_half_width_x[:, tf.newaxis] - tf.abs(y_grid - _CANYON_Y_OFFSET.value)) / canyon_half_width_x[:, tf.newaxis],
             clip_value_min=0.0,
             clip_value_max=1.0,
-        ) * _CANYON_DEPTH.value
-        canyon_profile_y = tf.clip_by_value(
-            (
-                _CANYON_HALF_WIDTH.value -
-                tf.abs(y_grid - _CANYON_Y_OFFSET.value)
-            ) / _CANYON_HALF_WIDTH.value,
-            clip_value_min=0.0,
-            clip_value_max=1.0
         )
-        canyon_profile = canyon_profile_x[:, tf.newaxis] * canyon_profile_y
+        canyon_profile = canyon_centerline[:, tf.newaxis] * canyon_profile_y
         profile = ramp_profile[:, tf.newaxis] + canyon_profile
       else:
         profile = tf.zeros_like(x)
