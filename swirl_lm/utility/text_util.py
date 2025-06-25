@@ -1,4 +1,4 @@
-# Copyright 2024 The swirl_lm Authors.
+# Copyright 2025 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,8 @@
 # limitations under the License.
 
 """Utility functions for text."""
+
+import re
 
 
 def _decimal_digits(numerator: int, denominator: int) -> str:
@@ -102,3 +104,8 @@ def seconds_to_string(total_seconds: float, separator: str = ' ',
     return zero
 
   return separator.join(f'{k}{v}' for k, v, _ in parts)
+
+
+def strip_line_comments(text: str, comment_marker: str) -> str:
+  strip_re = r'\s*' + re.escape(comment_marker) + r'.*$'
+  return re.sub(strip_re, '', text, flags=re.MULTILINE)

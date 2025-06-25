@@ -1,4 +1,4 @@
-# Copyright 2024 The swirl_lm Authors.
+# Copyright 2025 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -202,7 +202,7 @@ class PotentialTemperature(scalar_generic.ScalarGeneric):
       phi: types.FlowFieldVal,
       states: types.FlowFieldMap,
       additional_states: types.FlowFieldMap,
-  ) -> types.FlowFieldVal:
+  ) -> types.ScalarSource:
     """Computes all possible source terms in potential temperature equation.
 
     Args:
@@ -425,4 +425,4 @@ class PotentialTemperature(scalar_generic.ScalarGeneric):
       )
       source = tf.nest.map_structure(tf.math.add, source, precip)
 
-    return source
+    return types.ScalarSource(total=source)

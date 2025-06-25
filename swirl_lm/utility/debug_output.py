@@ -1,4 +1,4 @@
-# Copyright 2024 The swirl_lm Authors.
+# Copyright 2025 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -127,6 +127,10 @@ def dump_value(name: str, x: types.FlowFieldVal) -> None:
   if var_name not in _VARS:
     return
   _VARS[var_name].assign(x)
+
+
+def is_debug_enabled(name: str) -> bool:
+  return name in _VARS
 
 
 def get_vars(

@@ -1,4 +1,4 @@
-# Copyright 2024 The swirl_lm Authors.
+# Copyright 2025 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -362,7 +362,7 @@ def delta_layer(
 
   # Initializing a global normalization constant if provided.
   if not global_norm:
-    re_norm = jnp.clip(jnp.maximum(delta_1, delta_2), a_min=eps)
+    re_norm = jnp.clip(jnp.maximum(delta_1, delta_2), min=eps)
   else:
     re_norm = global_norm
 

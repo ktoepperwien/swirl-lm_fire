@@ -1,4 +1,4 @@
-# Copyright 2024 The swirl_lm Authors.
+# Copyright 2025 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -335,7 +335,7 @@ class ScalarGeneric(abc.ABC):
       phi: types.FlowFieldVal,
       states: types.FlowFieldMap,
       additional_states: types.FlowFieldMap,
-  ) -> types.FlowFieldVal:
+  ) -> types.ScalarSource:
     """Computes the source term in the transport equation.
 
     Args:
@@ -349,4 +349,4 @@ class ScalarGeneric(abc.ABC):
       The source term of this scalar transport equation.
     """
     del replica_id, replicas, states, additional_states
-    return tf.nest.map_structure(tf.zeros_like, phi)
+    return types.ScalarSource(total=tf.nest.map_structure(tf.zeros_like, phi))

@@ -1,4 +1,4 @@
-# Copyright 2024 The swirl_lm Authors.
+# Copyright 2025 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -477,8 +477,8 @@ class DistFFT():
     def do_transform():
       core_coord = (lax.axis_index(self._axis_names[0]),
                     lax.axis_index(self._axis_names[1]), 0)
-      input_signal = input_fn((nx, ny, 1), core_coord)
-      kernel = kernel_fn((nx, ny, 1), core_coord)
+      input_signal = input_fn((nx, ny, 1), core_coord)  # pytype: disable=wrong-arg-types  # lax-types
+      kernel = kernel_fn((nx, ny, 1), core_coord)  # pytype: disable=wrong-arg-types  # lax-types
       out_signal = input_signal
       for _ in range(num):
         out_signal = self.partitioned_fft_1d(
