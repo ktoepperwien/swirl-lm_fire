@@ -375,18 +375,28 @@ def _inplace_halo_exchange_1d(tensor, dim, replica_id, replicas, replica_dim,
     else:
       raise ValueError(f"Unsupported side type: {side.name}.")
 
-    # `tf.cond` is potentially expensive as it evaluates the input of both
-    # branches. The `if/else` statement can optimize performance by
-    # eliminating an unnecessary `tf.cond` from the graph.
-    if periodic or not bc:
-      return halo_from_neighbor[side.value]
-    else:
-      halo_from_bc = _replace_halo(tensor, plane, bc, dim, side,
-                                   left_or_top_padding)
-      return tf.cond(
-          pred=pred,
-          true_fn=lambda: halo_from_bc,
-          false_fn=lambda: halo_from_neighbor[side.value])
+    # This is the predicate that determines runtime behavior.
+    # Intent: use BC only if on the domain boundary, not periodic, AND a bc is
+    # given.
+    use_boundary_condition = pred and not periodic and (bc is not None)
+
+    # Create a trace-time safe `bc` because AutoGraph will trace both branches
+    # of tf.cond, therefore `bc` must never be None, else tracing fails. 
+    # If bc is None, create a dummy value that has the correct structure
+    # to pass the check inside `_replace_halo`. The actual values don't matter
+    # because the value of `use_boundary_condition` will be `False` (e.g., if
+    # `bc` is None), and therefore, the true-branch of tf.cond won't be executed
+    # at runtime.
+    maybe_bc = bc
+    if maybe_bc is None:
+      maybe_bc = (BCType.NO_TOUCH, 0.0)
+
+    return tf.cond(
+        pred=use_boundary_condition,
+        true_fn=lambda: _replace_halo(tensor, plane, maybe_bc, dim, side,
+                                      left_or_top_padding),
+        false_fn=lambda: halo_from_neighbor[side.value]
+    )
 
   plane_to_exchange = 2 * width - plane - 1
 
@@ -399,19 +409,66 @@ def _inplace_halo_exchange_1d(tensor, dim, replica_id, replicas, replica_dim,
   n = common_ops.get_shape(tensor)[dim]
 
   plane_padded = plane + left_or_top_padding
-  result_list = tf.cond(
-      pred=is_first,
-      true_fn=lambda: common_ops.tensor_scatter_1d_update(
-          tensor, dim, plane_padded,
-          maybe_replace_halo_from_boundary_conditions(SideType.LOW)),
-      false_fn=lambda: common_ops.tensor_scatter_1d_update(
-          tensor, dim, plane,
-          maybe_replace_halo_from_boundary_conditions(SideType.LOW)))
-  result_list = common_ops.tensor_scatter_1d_update(
-      result_list, dim, n - plane - 1,
-      maybe_replace_halo_from_boundary_conditions(SideType.HIGH))
 
-  return result_list
+  # Determine BOTH low and high indices where the updates will happen.
+  low_index = tf.cond(pred=is_first, true_fn=lambda: plane_padded,
+                      false_fn=lambda: plane)
+  high_index = n - plane - 1
+
+  # Calculate BOTH update planes.
+  low_update_plane = maybe_replace_halo_from_boundary_conditions(SideType.LOW)
+  high_update_plane = maybe_replace_halo_from_boundary_conditions(SideType.HIGH)
+
+  # Perform a SINGLE, multi-index update on the ORIGINAL tensor.
+  def _update_low_and_high_halos(
+    tensor: FlowFieldVal,
+    low_updates: tf.Tensor,
+    high_updates: tf.Tensor,
+    dim: int,
+  ) -> FlowFieldVal:
+    """Updates the low and high side halos of `tensor` in `dim` at once."""
+    if not isinstance(tensor, tf.Tensor):
+      raise ValueError(
+          "All field variables need to be 3D tf.Tensor. Sequence[tf.Tensor] is "
+          "no longer supported due to limitations on TPU v4 and newer."
+      )
+
+    shifted_dim = (dim + 1) % 3
+    perm = [0, 1, 2]
+    perm_inv = [0, 1, 2]
+    for i in range(shifted_dim):
+      perm = np.roll(perm, -1)
+      perm_inv = np.roll(perm_inv, 1)
+
+    # Prepare tensors for the single scatter operation.
+    tensor_t = tf.transpose(tensor, perm)
+    indices = [
+        [tf.cast(low_index, dtype=tf.int32)],
+        [tf.cast(high_index, dtype=tf.int32)]
+    ]
+
+    # The update planes also need to be transposed.
+    # Note: `low_update_plane` and `high_update_plane` are lists of tensors if
+    # `tensor` is a list.
+    # The code here assumes `tensor` is a single tf.Tensor.
+    update_low_t = tf.transpose(low_updates, perm)
+    update_high_t = tf.transpose(high_updates, perm)
+
+    updates_t = tf.stack([
+        tf.squeeze(update_low_t, axis=0),
+        tf.squeeze(update_high_t, axis=0)
+    ])
+
+    updated_tensor_t = tf.tensor_scatter_nd_update(tensor_t, indices, updates_t)
+
+    return tf.transpose(updated_tensor_t, perm_inv)
+
+  return _update_low_and_high_halos(
+      tensor,
+      low_update_plane,
+      high_update_plane,
+      dim,
+  )
 
 
 def inplace_halo_exchange(
