@@ -91,6 +91,8 @@ _CP_W = 4182.0
 # The relative threshold with respect to the maximum fuel density below which
 # the fuel is considered depleted.
 _EPSILON = 1e-3
+# The minimum fuel density used as threshold to assign fuel_id to a given node
+_MIN_RHO_F = 1e-6
 
 _TF_DTYPE = types.TF_DTYPE
 
@@ -447,6 +449,222 @@ def dim12_filter(
   ]
 
 
+class WoodInventory:
+  """Class for multiple wood combustion models."""
+
+  def __init__(
+      self,
+      combustion_config: combustion_pb2.Combustion,
+      thermodynamics_model: thermodynamics_manager.ThermodynamicsManager,
+      swirl_lm_params: parameters_lib.SwirlLMParameters,
+  ):
+    """Initializes the wood inventory.
+
+    Args:
+      combustion_config: The combustion configuration containing multiple wood
+        models.
+      thermodynamics_model: The thermodynamics model.
+      swirl_lm_params: The parameters for the Swirl-LM simulation.
+    """
+    self.wood_models = {}
+
+    # Create a Wood instance for each wood configuration
+    for wood_config in combustion_config.wood:
+      wood_name = wood_config.name
+      if wood_name in self.wood_models:
+        raise ValueError(f"Duplicate wood model name: {wood_name}")
+
+      self.wood_models[wood_name] = Wood(
+          wood_config,
+          thermodynamics_model,
+          swirl_lm_params
+      )
+
+    if not self.wood_models:
+      raise ValueError("No wood models defined in combustion configuration")
+
+  def required_additional_states_keys(
+      self,
+      states: FlowFieldMap,
+  ) -> Sequence[str]:
+    """Provides keys of required additional states for all combustion models."""
+    all_keys = set()
+
+    for wood_name, wood_model in self.wood_models.items():
+      # Get base keys from the model
+      base_keys = wood_model.required_additional_states_keys(states)
+
+      # Add wood-type-specific keys prefixed with wood name
+      for key in base_keys:
+        if key in ['src_rho', 'src_Y_O'] or key.startswith('src_'):
+          # These will be summed across all wood types, so no prefix needed
+          all_keys.add(key)
+        else:
+          # State-specific keys need prefixes
+          all_keys.add(f'{wood_name}_{key}')
+
+    # Add the non-prefixed source term keys
+    all_keys.update(['src_rho', 'src_Y_O', 'tke'])
+    all_keys.add(wood_model.get_temperature_source_key(states))
+
+    all_keys.add('fuel_id')
+
+    return list(all_keys)
+
+  def get_update_fn(
+      self,
+      rho_f_init_dict: Optional[dict[str, FlowFieldVal]] = None,
+  ) -> StatesUpdateFn:
+    """Generates an update function for all wood types.
+
+    Args:
+      rho_f_init_dict: Dictionary mapping wood names to initial fuel densities.
+
+    Returns:
+      A function that updates additional_states for all wood types.
+    """
+    if rho_f_init_dict is None:
+      rho_f_init_dict = {}
+
+    # Precompute fuel_id mapping
+    fuel_id_map = {name: model.fuel_id
+                   for name, model in self.wood_models.items()}
+
+    def additional_states_update_fn(
+        kernel_op: get_kernel_fn.ApplyKernelOp,
+        replica_id: tf.Tensor,
+        replicas: np.ndarray,
+        states: FlowFieldMap,
+        additional_states: FlowFieldMap,
+        params: grid_parametrization.GridParametrization,
+    ) -> FlowFieldMap:
+      """Updates states for all wood types and combines source terms."""
+
+      updated_states = dict(additional_states)
+
+      # Initialize combined source terms and fuel_id field
+      combined_src_rho = None
+      combined_src_y_o = None
+      combined_src_t = None
+      fuel_id_field = None
+      src_t_key = None
+
+      # Process each wood type
+      for wood_name, wood_model in self.wood_models.items():
+        # Create wood-specific states dictionary with prefixed keys
+        wood_states = {}
+        wood_additional_states = {}
+
+        # Map prefixed keys to unprefixed for this wood type
+        for key, value in additional_states.items():
+          if key.startswith(f'{wood_name}_'):
+            unprefixed_key = key[len(wood_name) + 1:]
+            wood_additional_states[unprefixed_key] = value
+          elif key in ['tke'] or (
+              key.startswith('src_') and key in ['src_rho', 'src_Y_O']):
+            wood_additional_states[key] = value
+
+        # Copy over states (these are shared)
+        wood_states.update(states)
+
+        # Get temperature source key if not already set
+        if src_t_key is None:
+          src_t_key = wood_model.get_temperature_source_key(states)
+
+        # Get initial fuel density for this wood type
+        rho_f_init = rho_f_init_dict.get(wood_name, None)
+
+        # Get update function for this wood type
+        wood_update_fn = wood_model.update_fn(rho_f_init)
+
+        # Update this wood type
+        updated_wood_states = wood_update_fn(
+            kernel_op,
+            replica_id,
+            replicas,
+            wood_states,
+            wood_additional_states,
+            params,
+        )
+
+        # Update fuel_id field based on where this fuel type exists
+        # Assume fuel exists where rho_f > _MIN_RHO_F
+        if (
+            f'{wood_name}_rho_f' in updated_states
+            or 'rho_f' in updated_wood_states
+        ):
+          rho_f = updated_wood_states.get(
+              'rho_f', 
+              updated_states.get(f'{wood_name}_rho_f')
+          )
+
+          if rho_f is not None:
+            # Create mask where this fuel is present (rho_f > _MIN_RHO_F)
+            fuel_present = tf.nest.map_structure(
+                lambda x: tf.cast(tf.greater(x, _MIN_RHO_F), tf.float32),
+                rho_f
+            )
+
+            # Mark cells with this fuel's ID
+            current_fuel_id = tf.nest.map_structure(
+                lambda mask: mask * float(fuel_id_map[wood_name]),
+                fuel_present
+            )
+
+            # Combine fuel IDs (later fuels overwrite earlier ones where they exist)
+            # Or use max to get dominant fuel type
+            if fuel_id_field is None:
+              fuel_id_field = current_fuel_id
+            else:
+              fuel_id_field = tf.nest.map_structure(
+                  tf.maximum,
+                  fuel_id_field,
+                  current_fuel_id
+              )
+
+        # Store wood-specific states with prefixes
+        for key, value in updated_wood_states.items():
+          if key in ['src_rho', 'src_Y_O', src_t_key]:
+            # Source terms to be combined
+            if key == 'src_rho':
+              combined_src_rho = (
+                  value
+                  if combined_src_rho is None
+                  else tf.nest.map_structure(
+                      tf.add, combined_src_rho, value
+                  )
+              )
+            elif key == 'src_Y_O':
+              combined_src_y_o = (
+                  value
+                  if combined_src_y_o is None
+                  else tf.nest.map_structure(
+                      tf.add, combined_src_y_o, value
+                  )
+              )
+            elif key == src_t_key:
+              combined_src_t = (
+                  value
+                  if combined_src_t is None
+                  else tf.nest.map_structure(
+                      tf.add, combined_src_t, value
+                  )
+              )
+          else:
+            updated_states[f'{wood_name}_{key}'] = value
+
+      if combined_src_rho is not None:
+        updated_states['src_rho'] = combined_src_rho
+      if combined_src_y_o is not None:
+        updated_states['src_Y_O'] = combined_src_y_o
+      if combined_src_t is not None:
+        updated_states[src_t_key] = combined_src_t
+
+      return updated_states
+
+    return additional_states_update_fn
+
+
 class Wood(object):
   """A library of wood combustion."""
 
@@ -469,6 +687,8 @@ class Wood(object):
         '3D TF tensor is required to apply the temperature filter.'
     )
 
+    self.name = params.name
+    self.fuel_id = params.fuel_id
     self.s_b = params.s_b
     self.s_x = params.s_x
     self.h_conv = params.h_conv
@@ -1175,14 +1395,16 @@ class Wood(object):
     return additional_states_update_fn
 
 
-def wood_combustion_factory(config: parameters_lib.SwirlLMParameters) -> Wood:
-  """Constructs an object of the wood combustion model.
+def wood_combustion_factory(
+  config: parameters_lib.SwirlLMParameters
+) -> WoodInventory:
+  """Constructs an object of the wood inventory.
 
   Args:
     config: The configuration context of the simulation.
 
   Returns:
-    An instance of the wood combustion library.
+    An instance of the wood inventory library.
 
   Raises:
     ValueError: If `wood` is not defined in the simulation context `config`.
@@ -1193,4 +1415,4 @@ def wood_combustion_factory(config: parameters_lib.SwirlLMParameters) -> Wood:
   thermodynamics_model = thermodynamics_manager.thermodynamics_factory(
       config)
 
-  return Wood(config.combustion.wood, thermodynamics_model, config)
+  return WoodInventory(config.combustion.wood, thermodynamics_model, config)

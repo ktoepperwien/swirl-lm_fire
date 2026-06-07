@@ -24,7 +24,7 @@ import "swirl_lm/physics/combustion/wood.proto";
 // Next id: 3
 message Combustion {
   // The wood combustion model.
-  optional Wood wood = 1;
+  repeated Wood wood = 1;
   // The biofuel combustion model.
   optional BiofuelMultistep biofuel_multistep = 2;
 }

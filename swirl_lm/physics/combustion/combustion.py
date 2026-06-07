@@ -120,11 +120,17 @@ def combustion_step(
 
   additional_states_combustion = {}
 
-  if params.combustion.HasField('wood'):
-    model = wood.wood_combustion_factory(params)
+  if params.combustion.wood:
+    # Check if we have multiple wood types or just one
+    num_wood_types = len(params.combustion.wood)
+
+    if num_wood_types == 0:
+      return {}
+
+    inventory = wood.wood_combustion_factory(params)
 
     required_additional_states = list(
-        model.required_additional_states_keys(states)
+        inventory.required_additional_states_keys(states)
     )
     # Removes `tke` from the list of required additional states because it will
     # always be provided by this function.
@@ -135,10 +141,12 @@ def combustion_step(
         f' {set(required_additional_states) - set(additional_states.keys())}.'
     )
 
+    # Compute TKE using the first wood type's TKE config
+    # Assumes all wood types have the same TKE model
     if (
         params.combustion is not None
-        and params.combustion.HasField('wood')
-        and params.combustion.wood.HasField('tke')
+        and params.combustion.wood
+        and params.combustion.wood[0].HasField('tke')
     ):
       tke = _compute_tke(
           kernel_op,
@@ -147,7 +155,7 @@ def combustion_step(
           states,
           additional_states,
           params,
-          params.combustion.wood.tke,
+          params.combustion.wood[0].tke,
       )
     else:
       raise ValueError(
@@ -172,8 +180,23 @@ def combustion_step(
       additional_states_combustion['p_ref'] = additional_states['p_ref']
     if 'theta_ref' in additional_states:
       additional_states_combustion['theta_ref'] = additional_states['theta_ref']
+
+    # Prepare initial fuel density dictionary for each wood type
+    rho_f_init_dict = {}
+    for wood_config in params.combustion.wood:
+      wood_name = wood_config.name
+      wood_rho_f_init_key = f'{wood_name}_rho_f_init'
+      if wood_rho_f_init_key in additional_states:
+        rho_f_init_dict[wood_name] = additional_states[wood_rho_f_init_key]
+      elif 'rho_f_init' in additional_states and num_wood_types == 1:
+        # Only one wood type and old naming used
+        rho_f_init_dict[wood_name] = additional_states['rho_f_init']
+
+    # Get the update function and call it
+    update_fn = inventory.get_update_fn(rho_f_init_dict)
+
     additional_states_combustion.update(
-        model.update_fn(additional_states.get('rho_f_init'))(
+        update_fn(
             kernel_op,
             replica_id,
             replicas,

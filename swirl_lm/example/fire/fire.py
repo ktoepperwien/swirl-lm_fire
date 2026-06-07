@@ -1352,45 +1352,73 @@ class Fire:
           output.pop(key)
 
     if self.include_fuel:
-      assert (
-          'rho_f' in self.config.additional_state_keys
-      ), 'Fuel height is none zero but rho_f is not included in the config.'
 
-      # In case of stretched grid, we assign the same fuel density at all node
-      # points below the fuel height.
-      if self.config.use_stretched_grid[2]:
+      wood_configs = self.config.combustion.wood
 
-        def init_rho_f(xx, yy, zz, lx, ly, lz, coord):
-          """Generates initial fuel density `rho_f` field."""
-          del yy, lx, ly, lz, coord
-          rho_f = tf.where(
-              tf.math.logical_and(
-                  zz <= ground_elevation + self.fire_utils.fuel_bed_height,
-                  zz >= ground_elevation - self.config.z[1],
-              ),
-              self.fire_utils.fuel_density * tf.ones_like(zz),
-              tf.zeros_like(zz),
-          )
-          return tf.where(
-              tf.greater_equal(xx, self.fuel_start_x), rho_f, tf.zeros_like(xx)
+      if not wood_configs:
+        raise ValueError('`include_fuel` is True but no wood configuration '
+                         'provided')
+
+      for wood_config in wood_configs:
+        wood_name = wood_config.name
+        required_keys = [f'{wood_name}_rho_f']
+
+        missing_keys = [k for k in required_keys
+                        if k not in self.config.additional_state_keys]
+
+        if missing_keys:
+          raise ValueError(
+            f'Fuel is enabled but required keys {missing_keys} not in config '
+            f'for wood type `{wood_name}`'
           )
 
-      else:
-        init_rho_f = get_init_rho_f(
-            ground_elevation,
-            self.fire_utils.fuel_bed_height,
-            self.fire_utils.fuel_density,
-            self.fuel_start_x,
-            self.config.dz,
-        )
-      output.update({
-          'rho_f':
-              self.fire_utils.states_init(coordinates, init_rho_f, 'CONSTANT'),
-      })
+        fuel_params = self._get_fuel_params_for_wood_type(wood_name)
+
+        # In case of stretched grid, we assign the same fuel density at all node
+        # points below the fuel height.
+        if self.config.use_stretched_grid[2]:
+
+          def init_rho_f(xx, yy, zz, lx, ly, lz, coord):
+            """Generates initial fuel density `rho_f` field for this wood type."""
+            del yy, lx, ly, lz, coord
+            rho_f = tf.where(
+                tf.math.logical_and(
+                    zz <= ground_elevation + fuel_params['fuel_bed_height'],
+                    zz >= ground_elevation - self.config.z[1],
+                ),
+                fuel_params['fuel_density'] * tf.ones_like(zz),
+                tf.zeros_like(zz),
+            )
+            rho_f = self._apply_fuel_spatial_mask(
+                rho_f, xx, yy, zz, wood_name, fuel_params
+            )
+
+            return rho_f
+
+        else:
+          init_rho_f = get_init_rho_f(
+              ground_elevation,
+              fuel_params['fuel_bed_height'],
+              fuel_params['fuel_density'],
+              self.fuel_start_x,
+              self.config.dz,
+          )
+
+        # Initialize rho_f for this wood type
+        output.update({
+            'rho_f':
+                self.fire_utils.states_init(coordinates, init_rho_f, 'CONSTANT'),
+        })
 
     if self.include_fire:
-      if 'rho_f_init' in self.config.additional_state_keys:
-        output.update({'rho_f_init': output['rho_f']})
+      # Initialize rho_f_init for each wood type
+      for wood_config in self.config.combustion.wood:
+        wood_name = wood_config.name
+
+        if f'{wood_name}_rho_f_init' in self.config.additional_state_keys:
+          output.update({
+              f'{wood_name}_rho_f_init': output[f'{wood_name}_rho_f']
+          })
 
       if (self.fire_utils.t_var not in self.config.transport_scalars_names or
           'Y_O' not in self.config.transport_scalars_names):
@@ -1420,25 +1448,45 @@ class Fire:
           'ignition_kernel':
               self.fire_utils.states_init(coordinates, init_ignition_kernel),
       })
+
+      # Initialize wood-specific states
+      for wood_config in self.config.combustion.wood:
+        wood_name = wood_config.name
+
+        output.update({
+            f'{wood_name}_T_s':
+                self.fire_utils.states_init(coordinates,
+                                            self.fire_utils.init_fn_t),
+        })
+
+        # Add additional states required if moisture is considered in the
+        # vegetation.
+        if (
+            wood_config.WhichOneof('combustion_model_option') == 'moist_wood'
+        ):
+          fuel_params = self._get_fuel_params_for_wood_type(wood_name)
+          init_rho_m = self._get_init_rho_m(wood_name, fuel_params)
+          output.update({
+              f'{wood_name}_rho_m':
+                  self.fire_utils.states_init(coordinates, init_rho_m,
+                                              'CONSTANT'),
+              f'{wood_name}_phi_w':
+                  self.fire_utils.states_init(coordinates,
+                                              self.fire_utils.init_fn_zeros),
+          })
+
+        # Initialize fuel_id field
+        if 'fuel_id' in self.config.additional_state_keys:
+          init_fuel_id = self._get_init_fuel_id()
+          output.update({
+              'fuel_id':
+                  self.fire_utils.states_init(coordinates, init_fuel_id),
+          })
+
       if self.ib is not None:
         output.update({
             'ignition_kernel':
                 output['ignition_kernel'] * output['ib_interior_mask']
-        })
-
-      # Add additional states required if moisture is considered in the
-      # vegetation.
-      assert (
-          combustion := self.config.combustion
-      ) is not None, 'Combustion must be set in the config.'
-      if combustion.wood.WhichOneof('combustion_model_option') == 'moist_wood':
-        output.update({
-            'rho_m':
-                self.fire_utils.states_init(coordinates, init_rho_m,
-                                            'CONSTANT'),
-            'phi_w':
-                self.fire_utils.states_init(coordinates,
-                                            self.fire_utils.init_fn_zeros),
         })
 
     if isinstance(self.inflow,
@@ -1561,3 +1609,237 @@ class Fire:
           self.config.num_cycles * self.config.num_steps))
 
     return output
+
+
+  def _get_fuel_params_for_wood_type(
+      self, 
+      wood_name: str
+  ) -> dict[str, any]:
+    """Returns fuel parameters from config for a specific wood type.
+
+    Args:
+      wood_name: The name of the wood type to get parameters for.
+
+    Returns:
+      A dictionary of fuel parameters.
+
+    Raises:
+      ValueError: If wood type not found.
+    """
+    fuel_params_map = {
+      'fine_fuel': {
+          'fuel_bed_height': 0.5,
+          'fuel_density': 10.0,
+          'moisture_content': 0.1,
+      },
+      'coarse_fuel': {
+          'fuel_bed_height': 2.0,
+          'fuel_density': 15.0,
+          'moisture_content': 0.15,
+      },
+    }
+
+    if wood_name not in fuel_params_map:
+      raise ValueError(f"Unknown wood type: {wood_name}")
+
+    return fuel_params_map[wood_name]
+
+  def _get_init_rho_m(
+      self,
+      wood_name: str,
+      fuel_params: dict[str, Any],
+      ground_elevation: tf.Tensor,
+  ) -> wildfire_utils.InitFn:
+    """Returns initialization function for moisture density.
+
+    Args:
+      wood_name: Name of the wood type.
+      fuel_params: Fuel parameters dictionary.
+      ground_elevation: Ground elevation tensor.
+
+    Returns:
+      Initialization function for moisture density.
+    """
+
+    moisture_content = fuel_params.get('moisture_content', 0.0)
+
+    # For stretched grids
+    if self.config.use_stretched_grid[2]:
+      def init_rho_m(xx, yy, zz, lx, ly, lz, coord):
+        """Initialize moisture density for stretched grid."""
+        del yy, lx, ly, lz, coord
+
+        rho_m = tf.where(
+            tf.math.logical_and(
+                zz <= ground_elevation + fuel_params['fuel_bed_height'],
+                zz >= ground_elevation - self.config.z[1],
+            ),
+            moisture_content * fuel_params['fuel_density'] * tf.ones_like(zz),
+            tf.zeros_like(zz),
+        )
+
+        # Apply spatial mask
+        rho_m = self._apply_fuel_spatial_mask(rho_m, xx, yy, zz, fuel_params)
+
+        return rho_m
+
+    # For non-stretched grids
+    else:
+      def init_rho_m(xx, yy, zz, lx, ly, lz, coord):
+        """Initialize moisture density for regular grid."""
+        del yy, lx, ly, lz, coord
+
+        # Use same spatial logic as rho_f but scaled by moisture content
+        quantized_ground_elevation = (
+            tf.math.ceil(ground_elevation / self.config.dz) * self.config.dz - 
+            2 * self.config.dz
+        )
+        num_full_cells = tf.cast(
+            tf.floor(fuel_params['fuel_bed_height'] / self.config.dz), 
+            quantized_ground_elevation.dtype
+        )
+        quantized_full_fuel_height = (
+            quantized_ground_elevation + (num_full_cells + 1) * self.config.dz
+        )
+
+        # Bottom cells - fully filled with moisture
+        rho_m_bottom = tf.compat.v1.where(
+            tf.math.logical_and(
+                zz > quantized_ground_elevation + 0.1 * self.config.dz,
+                zz < quantized_full_fuel_height + 0.1 * self.config.dz
+            ),
+            moisture_content * fuel_params['fuel_density'] * tf.ones_like(zz),
+            tf.zeros_like(zz),
+        )
+
+        # Top cell - partially filled
+        rho_m_top_val = (
+            moisture_content * fuel_params['fuel_density'] * 
+            (fuel_params['fuel_bed_height'] - num_full_cells * self.config.dz) / 
+            self.config.dz
+        )
+        rho_m_top = tf.where(
+            tf.math.logical_and(
+                zz >= quantized_full_fuel_height + 0.1 * self.config.dz,
+                zz < quantized_full_fuel_height + 1.1 * self.config.dz
+            ),
+            tf.cast(rho_m_top_val, tf.float32),
+            tf.zeros_like(zz),
+        )
+
+        rho_m = rho_m_bottom + rho_m_top
+
+        # Apply spatial mask
+        rho_m = self._apply_fuel_spatial_mask(rho_m, xx, yy, zz, fuel_params)
+
+        return rho_m
+
+    return init_rho_m
+
+  def _apply_fuel_spatial_mask(
+      self,
+      rho: FlowFieldVal,
+      xx: tf.Tensor,
+      yy: tf.Tensor,
+      zz: tf.Tensor,
+      fuel_params: dict[str, any],
+  ) -> FlowFieldVal:
+    # TODO: Layer different fuels
+    return rho
+
+  def _get_init_fuel_id(
+      self,
+      ground_elevation: tf.Tensor,
+  ) -> wildfire_utils.InitFn:
+    """Returns initialization function for fuel_id field.
+
+    Args:
+      ground_elevation: Ground elevation tensor.
+
+    Returns:
+      Initialization function for fuel_id.
+    """
+
+    wood_configs = self.config.combustion.wood
+
+    def init_fuel_id(xx, yy, zz, lx, ly, lz, coord):
+      """Initialize fuel_id based on spatial distribution of fuels.
+
+      The fuel_id will be set to the ID of the wood type present at each
+      location. If multiple wood types overlap, the last one in the config
+      will take precedence.
+      """
+      del lx, ly, lz, coord
+
+      # Start with zeros (no fuel)
+      fuel_id = tf.zeros_like(xx)
+
+      # For each wood type, mark regions where it exists
+      # Later wood types will overwrite earlier ones if they overlap
+      for wood_config in wood_configs:
+        wood_name = wood_config.name
+        wood_fuel_id = wood_config.fuel_id
+        fuel_params = self._get_fuel_params_for_wood_type(wood_name)
+
+        # Create a mask for where this fuel exists vertically
+        if self.config.use_stretched_grid[2]:
+          vertical_mask = tf.math.logical_and(
+              zz <= ground_elevation + fuel_params['fuel_bed_height'],
+              zz >= ground_elevation - self.config.z[1],
+          )
+        else:
+          quantized_ground_elevation = (
+              tf.math.ceil(ground_elevation / self.config.dz) * self.config.dz - 
+              2 * self.config.dz
+          )
+          num_full_cells = tf.cast(
+              tf.floor(fuel_params['fuel_bed_height'] / self.config.dz), 
+              quantized_ground_elevation.dtype
+          )
+          quantized_full_fuel_height = (
+              quantized_ground_elevation + (num_full_cells + 1) * self.config.dz
+          )
+
+          vertical_mask = tf.math.logical_and(
+              zz > quantized_ground_elevation + 0.1 * self.config.dz,
+              zz <= quantized_full_fuel_height + 1.1 * self.config.dz
+          )
+
+        # Start with vertical mask
+        fuel_mask = vertical_mask
+
+        # Apply horizontal spatial constraints
+        if fuel_params.get('fuel_start_x') is not None:
+          fuel_mask = tf.logical_and(
+              fuel_mask,
+              tf.greater_equal(xx, fuel_params['fuel_start_x'])
+          )
+
+        if fuel_params.get('fuel_end_x') is not None:
+          fuel_mask = tf.logical_and(
+              fuel_mask,
+              tf.less(xx, fuel_params['fuel_end_x'])
+          )
+
+        if fuel_params.get('fuel_start_y') is not None:
+          fuel_mask = tf.logical_and(
+              fuel_mask,
+              tf.greater_equal(yy, fuel_params['fuel_start_y'])
+          )
+
+        if fuel_params.get('fuel_end_y') is not None:
+          fuel_mask = tf.logical_and(
+              fuel_mask,
+              tf.less(yy, fuel_params['fuel_end_y'])
+          )
+
+        # Update fuel_id where this fuel exists
+        fuel_id = tf.where(
+            fuel_mask,
+            tf.ones_like(xx) * float(wood_fuel_id),
+            fuel_id
+        )
+
+      return fuel_id
+
+    return init_fuel_id

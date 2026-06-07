@@ -30,8 +30,12 @@ import "swirl_lm/physics/combustion/turbulent_kinetic_energy.proto";
 //     Coupled Atmosphere–fire Model: Basic Fire Behavior and Dependence on Wind
 //     Speed.” Journal of Geophysical Research 110 (D13): 287.
 //
-// Next id: 23
+// Next id: 26
 message Wood {
+  // A unique identifier for this fuel type (default is fine fuel)
+  optional string name = 24 [default = "default_fuel"];
+  // A unique fuel ID for this fuel type
+  optional int32 fuel_id = 25 [default = 0];
   // The B scale of the fuel elements, in units of m.
   optional float s_b = 1;
   // The length scale of the smallest fuel elements, in units of m. As the
