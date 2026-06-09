@@ -1647,7 +1647,7 @@ class Fire:
   def _get_init_rho_m(
       self,
       wood_name: str,
-      fuel_params: dict[str, Any],
+      fuel_params: dict[str, any],
       ground_elevation: tf.Tensor,
   ) -> wildfire_utils.InitFn:
     """Returns initialization function for moisture density.
@@ -1738,12 +1738,12 @@ class Fire:
 
   def _apply_fuel_spatial_mask(
       self,
-      rho: FlowFieldVal,
+      rho: types.FlowFieldVal,
       xx: tf.Tensor,
       yy: tf.Tensor,
       zz: tf.Tensor,
       fuel_params: dict[str, any],
-  ) -> FlowFieldVal:
+  ) -> types.FlowFieldVal:
     # TODO: Layer different fuels
     return rho
 

@@ -66,6 +66,7 @@ import numpy as np
 from swirl_lm.base import parameters as parameters_lib
 from swirl_lm.communication import halo_exchange
 from swirl_lm.numerics import time_integration
+from swirl_lm.physics.combustion import combustion_pb2
 from swirl_lm.physics.combustion import wood_pb2
 from swirl_lm.physics.thermodynamics import thermodynamics_manager
 from swirl_lm.physics.turbulent_combustion import turbulent_combustion_generic
@@ -487,7 +488,7 @@ class WoodInventory:
       self,
       states: FlowFieldMap,
   ) -> Sequence[str]:
-    """Provides keys of required additional states for all combustion models."""
+    """Provides keys of required additional states for all wood models."""
     all_keys = set()
 
     for wood_name, wood_model in self.wood_models.items():
@@ -904,7 +905,7 @@ class Wood(object):
   def required_additional_states_keys(
       self, states: types.FlowFieldMap
   ) -> Sequence[str]:
-    """Provides keys of required additional states for the combustion model."""
+    """Provides keys of required additional states for this wood model."""
     required_keys = ['rho_f', 'T_s', 'src_rho', 'src_Y_O', 'tke']
     required_keys.append(self.get_temperature_source_key(states))
 

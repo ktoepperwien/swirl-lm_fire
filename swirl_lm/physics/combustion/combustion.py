@@ -210,7 +210,7 @@ def combustion_step(
     model = biofuel_multistep.BiofuelMultistep(params)
 
     required_additional_states = list(
-        model.required_additional_states_keys(states)
+        inventory.required_additional_states_keys(states)
     )
     # Removes `tke` from the list of required additional states because it will
     # always be provided by this function.
