@@ -151,17 +151,17 @@ class PoissonSolver(object):
     if 'x' in axes:
       terms['x'] = (
           self._kernel_op.apply_kernel_op(f, 'kdd', 'x')
-          * self._grid_params.dx**-2
+          * self._grid_params.dx**-2  # pyrefly: ignore[unsupported-operation]
       )
     if 'y' in axes:
       terms['y'] = (
           self._kernel_op.apply_kernel_op(f, 'kdd', 'y')
-          * self._grid_params.dy**-2
+          * self._grid_params.dy**-2  # pyrefly: ignore[unsupported-operation]
       )
     if 'z' in axes:
       terms['z'] = (
           self._kernel_op.apply_kernel_op(f, 'kdd', 'z')
-          * self._grid_params.dz**-2
+          * self._grid_params.dz**-2  # pyrefly: ignore[unsupported-operation]
       )
     return terms
 

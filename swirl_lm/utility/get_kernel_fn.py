@@ -484,7 +484,7 @@ def _z_kernel_dict(
       'k4d2zsh': [-2, -1, 0, 1, 2],
   }
   if custom_kernel_dict is not None:
-    _add_customized_kernel(kernel_dict, custom_kernel_dict, 'z')
+    _add_customized_kernel(kernel_dict, custom_kernel_dict, 'z')  # pyrefly: ignore[bad-argument-type]
 
   return kernel_dict
 
@@ -549,7 +549,7 @@ def _add_customized_kernel(
 
       kernel_dict.update({
           kernel_name_directional:
-              kernel_generation_fn(stencil[0], n, axis, stencil[1])
+              kernel_generation_fn(stencil[0], n, axis, stencil[1])  # pyrefly: ignore[bad-argument-type]
       })
   return kernel_dict
 
@@ -569,7 +569,7 @@ class ApplyKernelOp(object):
         the first argument in the tuple value is the weights of the kernel, and
         the second argument in the tuple value is the offset of the kernel.
     """
-    self._z_kernel_dict = _z_kernel_dict(custom_kernel_dict)
+    self._z_kernel_dict = _z_kernel_dict(custom_kernel_dict)  # pyrefly: ignore[bad-argument-type]
 
   @abc.abstractmethod
   def apply_kernel_op_x(self, tiles: FlowFieldVal,
@@ -1034,12 +1034,12 @@ def _slice_kernel_dict(
   if custom_kernel_dict:
     for axis in ('x', 'y'):
       _add_customized_kernel(
-          kernel_dict,
+          kernel_dict,  # pyrefly: ignore[bad-argument-type]
           custom_kernel_dict,
           axis,
           kernel_generation_fn=_make_backward_slice_kernel)
 
-  return kernel_dict
+  return kernel_dict  # pyrefly: ignore[bad-return]
 
 
 class ApplyKernelSliceOp(ApplyKernelOp):
@@ -1068,7 +1068,7 @@ class ApplyKernelSliceOp(ApplyKernelOp):
     """Adds an customized kernel to the kernel library."""
     for axis in ('x', 'y'):
       _add_customized_kernel(
-          self._kernels,
+          self._kernels,  # pyrefly: ignore[bad-argument-type]
           custom_kernel_dict,
           axis,
           kernel_generation_fn=_make_backward_slice_kernel)

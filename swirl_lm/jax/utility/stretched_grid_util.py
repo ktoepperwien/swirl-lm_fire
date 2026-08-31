@@ -47,4 +47,4 @@ def get_use_stretched_grid(
     additional_states: ScalarFieldMap,
 ) -> tuple[bool, bool, bool]:
   """Returns a tuple of boolean values indicating if stretched grid is used."""
-  return tuple(h_key(dim) in additional_states for dim in (0, 1, 2))
+  return tuple(h_key(dim) in additional_states for dim in (0, 1, 2))  # pyrefly: ignore[bad-return]

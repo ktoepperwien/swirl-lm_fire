@@ -145,7 +145,7 @@ def central4(kernel_op: get_kernel_fn.ApplyKernelOp, f: FlowFieldVal,
       lambda f: kernel_op.apply_kernel_op_y(f, 'kD4y'),
       lambda f: kernel_op.apply_kernel_op_z(f, 'kD4z', 'kD4zsh'),
   ]
-  return grad_fn[dim](f) / (12.0 * grid_spacing)
+  return grad_fn[dim](f) / (12.0 * grid_spacing)  # pyrefly: ignore[bad-return, unsupported-operation]
 
 
 def face_interpolation(
@@ -422,7 +422,7 @@ def flux_lf(
   """
   # Explicitly deleting unused arguments here for the support of Rhie-Chow
   # correction in the future.
-  del (
+  del (  # pyrefly: ignore[unsupported-delete]
       kernel_op,
       replica_id,
       pressure,
@@ -517,7 +517,7 @@ def flux_roe(
   """
   # Explicitly deleting unused arguments here for the support of Rhie-Chow
   # correction in the future.
-  del (
+  del (  # pyrefly: ignore[unsupported-delete]
       replica_id,
       replicas,
       pressure,

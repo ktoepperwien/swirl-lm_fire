@@ -308,10 +308,10 @@ def _interpolate_with_weno_weights(
   axis_index = grid_params.get_axis_index(axis)
   v_neg = jnp.roll(v_neg, shift=1, axis=axis_index)
   v_slice = jax.lax.dynamic_slice_in_dim(
-      v, start_index=0, slice_size=1, axis=axis_index
+      v, start_index=0, slice_size=1, axis=axis_index  # pyrefly: ignore[bad-argument-type]
   )
   v_neg = jax.lax.dynamic_update_slice_in_dim(
-      v_neg, v_slice, start_index=0, axis=axis_index
+      v_neg, v_slice, start_index=0, axis=axis_index  # pyrefly: ignore[bad-argument-type]
   )
 
   return v_neg, v_pos

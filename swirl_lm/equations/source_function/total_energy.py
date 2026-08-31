@@ -131,7 +131,7 @@ class TotalEnergy(scalar_generic.ScalarGeneric):
           zz,
       )
       temperature = self._thermodynamics.model.saturation_adjustment(
-          'e_int', e, rho_thermal, q_t, additional_states)
+          'e_int', e, rho_thermal, q_t, additional_states)  # pyrefly: ignore[bad-argument-type]
 
     # Compute the potential temperature.
     # TODO(b/271625754): Remove the dependencies on temperature in additional
@@ -310,7 +310,7 @@ class TotalEnergy(scalar_generic.ScalarGeneric):
           tau_2j_l: tf.Tensor,
       ) -> tf.Tensor:
         """Computes the dot product of the velocity and stress tensor."""
-        return u * tau_0j_l + v * tau_1j_l + w * tau_2j_l
+        return u * tau_0j_l + v * tau_1j_l + w * tau_2j_l  # pyrefly: ignore[unsupported-operation]
 
       return tf.nest.map_structure(
           u_dot_tau,
@@ -365,13 +365,13 @@ class TotalEnergy(scalar_generic.ScalarGeneric):
           rho,
           thermo_states['zz'],
           thermo_states['h_t'],
-          self._g_dim,
+          self._g_dim,  # pyrefly: ignore[bad-argument-type]
           additional_states,
       )
       source = tf.nest.map_structure(tf.math.add, source, src_subsidence)
 
     if self._include_precipitation:
-      src_precipitation = self._microphysics.total_energy_source_fn(
+      src_precipitation = self._microphysics.total_energy_source_fn(  # pyrefly: ignore[missing-attribute]
           states, additional_states, thermo_states
       )
       source = tf.nest.map_structure(tf.math.add, source, src_precipitation)

@@ -102,12 +102,12 @@ class TerrainUtils(object):
       coordinates: ThreeIntTuple,
   ) -> RangeIndices3D:
     """Generates the range indices for the local mesh."""
-    i_start = coordinates[0] * self.config.core_nx
-    i_end = (coordinates[0] + 1) * self.config.core_nx
-    j_start = coordinates[1] * self.config.core_ny
-    j_end = (coordinates[1] + 1) * self.config.core_ny
-    k_start = coordinates[2] * self.config.core_nz
-    k_end = (coordinates[2] + 1) * self.config.core_nz
+    i_start = coordinates[0] * self.config.core_nx  # pyrefly: ignore[unsupported-operation]
+    i_end = (coordinates[0] + 1) * self.config.core_nx  # pyrefly: ignore[unsupported-operation]
+    j_start = coordinates[1] * self.config.core_ny  # pyrefly: ignore[unsupported-operation]
+    j_end = (coordinates[1] + 1) * self.config.core_ny  # pyrefly: ignore[unsupported-operation]
+    k_start = coordinates[2] * self.config.core_nz  # pyrefly: ignore[unsupported-operation]
+    k_end = (coordinates[2] + 1) * self.config.core_nz  # pyrefly: ignore[unsupported-operation]
     return ((i_start, i_end), (j_start, j_end), (k_start, k_end))
 
   def local_elevation_map(
@@ -145,11 +145,11 @@ class TerrainUtils(object):
                 ly: float, lz: float, coord: ThreeIntTuple) -> tf.Tensor:
       """Initializes the flow field mask."""
       del xx, yy, lx, ly, lz, coord
-      return tf.compat.v1.where(zz > local_map,
+      return tf.compat.v1.where(zz > local_map,  # pyrefly: ignore[unsupported-operation]
                                 tf.ones_like(zz, dtype=_TF_DTYPE),
                                 tf.zeros_like(zz, dtype=_TF_DTYPE))
 
-    return init_fn
+    return init_fn  # pyrefly: ignore[bad-return]
 
   def ib_boundary_mask_fn(
       self,
@@ -163,10 +163,10 @@ class TerrainUtils(object):
       """Initializes the flow field mask."""
       del xx, yy, lx, ly, lz, coord
       return tf.compat.v1.where(
-          tf.math.logical_and(zz <= local_map, zz > local_map - self.config.dz),
+          tf.math.logical_and(zz <= local_map, zz > local_map - self.config.dz),  # pyrefly: ignore[unsupported-operation]
           tf.ones_like(zz, dtype=_TF_DTYPE), tf.zeros_like(zz, dtype=_TF_DTYPE))
 
-    return init_fn
+    return init_fn  # pyrefly: ignore[bad-return]
 
   def compute_boundary_weights(
       self,

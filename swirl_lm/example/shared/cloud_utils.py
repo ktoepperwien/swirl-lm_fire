@@ -126,7 +126,7 @@ def _cumsum(
 
   def global_reduce_fn(x):
     return common_ops.global_reduce(
-        x[tf.newaxis, ...], tf.math.cumsum, group_assignment)
+        x[tf.newaxis, ...], tf.math.cumsum, group_assignment)  # pyrefly: ignore[bad-argument-type]
 
   cumsum_global = global_reduce_fn(sum_local)
   cumsum_prev = tf.cond(
@@ -201,12 +201,12 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
   # In ANELASTIC mode, the gradient to be balanced is for the buoyancy
   # normalized by the reference density.
   if params.solver_mode == thermodynamics_pb2.Thermodynamics.ANELASTIC:
-    b = b / rho_0
+    b = b / rho_0  # pyrefly: ignore[unsupported-operation]
 
   core_n = (params.core_nx, params.core_ny, params.core_nz)[g_dim]
   cores = (params.cx, params.cy, params.cz)[g_dim]
   # Total number of grid points along the vertical direction.
-  global_n = cores * core_n
+  global_n = cores * core_n  # pyrefly: ignore[unsupported-operation]
   halo_width = params.halo_width
 
   def pad_in_vertical(t: types.FlowFieldVal, low_n: int, high_n: int):
@@ -224,13 +224,13 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
     offset = 1 if even else 0
     sequence = tf.slice(
         tf.linspace(offset, global_n - 1 + offset, global_n),
-        [core_i * core_n],
+        [core_i * core_n],  # pyrefly: ignore[unsupported-operation]
         [core_n],
     )
     binary_sequence = tf.cast(tf.math.mod(sequence, 2), dtype=_DTYPE)
     shifted_dim = (g_dim + 1) % 3
     broadcast_shape = [1, 1, 1]
-    broadcast_shape[shifted_dim] = core_n
+    broadcast_shape[shifted_dim] = core_n  # pyrefly: ignore[unsupported-operation]
     broadcastable_mask = tf.reshape(binary_sequence, broadcast_shape)
     ones = tf.ones_like(f)
     return ones * broadcastable_mask
@@ -240,19 +240,19 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
     h = additional_states[stretched_grid_util.h_key(g_dim)]
   else:
     h = params.grid_spacings[g_dim]
-  b_dz = 2 * b * h
+  b_dz = 2 * b * h  # pyrefly: ignore[unsupported-operation]
 
   # Remove the halos along the vertical direction.
-  b = _slice_in_dim(b, halo_width, core_n, g_dim)
-  b_dz = _slice_in_dim(b_dz, halo_width, core_n, g_dim)
+  b = _slice_in_dim(b, halo_width, core_n, g_dim)  # pyrefly: ignore[bad-argument-type]
+  b_dz = _slice_in_dim(b_dz, halo_width, core_n, g_dim)  # pyrefly: ignore[bad-argument-type]
 
   # Split the buoyancy term into odd and even indices. The first internal fluid
   # node is assumed to have index 0.
   even_mask = binary_mask_like(b_dz, even=True)
   odd_mask = binary_mask_like(b_dz, even=False)
 
-  b_dz_even = even_mask * b_dz
-  b_dz_odd = odd_mask * b_dz
+  b_dz_even = even_mask * b_dz  # pyrefly: ignore[unsupported-operation]
+  b_dz_odd = odd_mask * b_dz  # pyrefly: ignore[unsupported-operation]
 
   # Prepend a 0 to the buoyancy terms to make them align with the corresponding
   # pressure levels.
@@ -261,7 +261,7 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
   # Integrate the buoyancy tensors to get the pressure.
   zeros = tf.zeros_like(_slice_in_dim(b_dz_odd, 0, 1, g_dim))
   p_even = _cumsum(replica_id, replicas, b_dz_odd, zeros, g_dim)
-  p_even = even_mask * _slice_in_dim(p_even, 0, core_n, g_dim)
+  p_even = even_mask * _slice_in_dim(p_even, 0, core_n, g_dim)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
 
   # Shifting the starting point of integration of the odd part so that the
   # overall profile is smooth. That is, the p_odd and p_even sequences are
@@ -278,9 +278,9 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
   if params.use_stretched_grid[g_dim]:
     h_face = additional_states[stretched_grid_util.h_face_key(g_dim)]
     hf1 = tf.squeeze(h_face)[halo_width + 1]  # z1 - z0.
-    delta_p = hf1 * (b0 + b1) / 2
+    delta_p = hf1 * (b0 + b1) / 2  # pyrefly: ignore[unsupported-operation]
   else:
-    delta_p = params.grid_spacings[g_dim] * (b0 + b1) / 2
+    delta_p = params.grid_spacings[g_dim] * (b0 + b1) / 2  # pyrefly: ignore[unsupported-operation]
 
   # The desired value for p_1 is p_0 + delta_p. But because of the way the
   # cumsum function behaves, b_dz_0 is added, so we need to subtract it here.
@@ -299,7 +299,7 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
   f_0 = p_1 - b_dz_0
 
   p_odd = _cumsum(replica_id, replicas, b_dz_even, f_0, g_dim)
-  p_odd = odd_mask * _slice_in_dim(p_odd, 0, core_n, g_dim)
+  p_odd = odd_mask * _slice_in_dim(p_odd, 0, core_n, g_dim)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
 
   # Combine the 2 tensors into one and update values in the halos. Note that
   # only the layer of halo that is closest to the interior domain matters, which
@@ -307,16 +307,16 @@ def compute_buoyancy_balanced_hydrodynamic_pressure(
   p = p_even + p_odd
   # The lower boundary condition corresponding to the innermost halo (p_l) must
   # satisfy p[1] - p_l = b_dz[0]
-  p_l = _slice_in_dim(p, 1, 1, g_dim) - _slice_in_dim(b_dz, 0, 1, g_dim)
+  p_l = _slice_in_dim(p, 1, 1, g_dim) - _slice_in_dim(b_dz, 0, 1, g_dim)  # pyrefly: ignore[unsupported-operation]
   # The upper boundary condition (p_h) must satisfy p_h - p[n-2] = bd_z[n-1],
   # where n-1 is the index of the last internal fluid layer.
-  p_h = _slice_in_dim(p, core_n - 2, 1, g_dim) + _slice_in_dim(
-      b_dz, core_n - 1, 1, g_dim
+  p_h = _slice_in_dim(p, core_n - 2, 1, g_dim) + _slice_in_dim(  # pyrefly: ignore[unsupported-operation]
+      b_dz, core_n - 1, 1, g_dim  # pyrefly: ignore[unsupported-operation]
   )
 
   p = pad_in_vertical(p, halo_width, halo_width)
   bc = [[(halo_exchange.BCType.NEUMANN, 0.0)] * 2] * 3
-  bc[g_dim] = [
+  bc[g_dim] = [  # pyrefly: ignore[unsupported-operation]
       (
           halo_exchange.BCType.DIRICHLET,
           [p_l] * halo_width,
@@ -623,7 +623,7 @@ class CloudUtils(object):
 
       res = tf.nest.map_structure(tf.math.subtract, q_c, states['q_c'])
 
-      return i + 1, {'q_v': q_v, 'q_c': q_c, 'res': res}
+      return i + 1, {'q_v': q_v, 'q_c': q_c, 'res': res}  # pyrefly: ignore[bad-return, unsupported-operation]
 
     def cond(i: tf.Tensor, states: FlowFieldMap) -> tf.Tensor:
       """The continue condition of the temperature iteration."""

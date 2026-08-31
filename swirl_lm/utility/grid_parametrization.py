@@ -30,6 +30,7 @@
 from typing import List, Literal, Optional, Sequence, Tuple, TypeAlias
 
 from absl import logging
+from google.protobuf import text_format
 import numpy as np
 from swirl_lm.utility import common_ops
 from swirl_lm.utility import file_io
@@ -39,8 +40,6 @@ from swirl_lm.utility import stretched_grid_util
 from swirl_lm.utility import text_util
 from swirl_lm.utility import types
 import tensorflow as tf
-
-from google.protobuf import text_format
 
 FlowFieldVal: TypeAlias = types.FlowFieldVal
 FlowFieldMap: TypeAlias = types.FlowFieldMap
@@ -280,7 +279,7 @@ def _global_xyz_from_config(
     )
     return global_coord
 
-  return tuple(get_full_grid(dim) for dim in (0, 1, 2))
+  return tuple(get_full_grid(dim) for dim in (0, 1, 2))  # pyrefly: ignore[bad-return]
 
 
 # TODO(b/368405442): Adjust definition of a periodic uniform mesh to be
@@ -422,7 +421,7 @@ class GridParametrization(object):
     dx_uniform = _get_grid_spacing(self.fx, self.lx)
     dy_uniform = _get_grid_spacing(self.fy, self.ly)
     dz_uniform = _get_grid_spacing(self.fz, self.lz)
-    self.grid_spacings: tuple[float, float, float] = tuple(
+    self.grid_spacings: tuple[float, float, float] = tuple(  # pyrefly: ignore[bad-assignment]
         _get_stretched_grid_aware_grid_spacing_in_dim(
             (dx_uniform, dy_uniform, dz_uniform),
             dim,
@@ -686,11 +685,11 @@ class GridParametrization(object):
 
     if include_halo:
       return common_ops.get_local_slice_of_1d_array(
-          self.global_xyz_with_halos[dim], coord, core_n, n
+          self.global_xyz_with_halos[dim], coord, core_n, n  # pyrefly: ignore[bad-argument-type]
       )
     else:
       return common_ops.get_local_slice_of_1d_array(
-          self.global_xyz[dim], coord, core_n, core_n
+          self.global_xyz[dim], coord, core_n, core_n  # pyrefly: ignore[bad-argument-type]
       )
 
   def x_local(

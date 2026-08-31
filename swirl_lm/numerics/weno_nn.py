@@ -274,7 +274,7 @@ class WenoNN:
     if isinstance(delta[0], list):
       # Transpose the order of list of lists (get Z along outer axis and
       # features along inner axis).
-      delta = [[row[i] for row in delta] for i in range(len(delta[0]))]
+      delta = [[row[i] for row in delta] for i in range(len(delta[0]))]  # pyrefly: ignore[bad-assignment]
       delta = [tf.stack(delta_z, axis=2) for delta_z in delta]
     else:  # For flow field as 3D tensor, get features along last axis
       delta = tf.stack(delta, axis=-1)
@@ -309,27 +309,27 @@ class WenoNN:
       non-negative.
     """
     kernel_fn = [None] * 4
-    kernel_fn[0] = {
+    kernel_fn[0] = {  # pyrefly: ignore[unsupported-operation]
         'x': lambda u: self._kernel_op.apply_kernel_op_x(u, 'kdx'),
         'y': lambda u: self._kernel_op.apply_kernel_op_y(u, 'kdy'),
         'z': lambda u: self._kernel_op.apply_kernel_op_z(u, 'kdz', 'kdzsh'),
     }[dim]
-    kernel_fn[1] = {
+    kernel_fn[1] = {  # pyrefly: ignore[unsupported-operation]
         'x': lambda u: self._kernel_op.apply_kernel_op_x(u, 'kdx+'),
         'y': lambda u: self._kernel_op.apply_kernel_op_y(u, 'kdy+'),
         'z': lambda u: self._kernel_op.apply_kernel_op_z(u, 'kdz+', 'kdz+sh'),
     }[dim]
-    kernel_fn[2] = {
+    kernel_fn[2] = {  # pyrefly: ignore[unsupported-operation]
         'x': lambda u: self._kernel_op.apply_kernel_op_x(u, 'kDx'),
         'y': lambda u: self._kernel_op.apply_kernel_op_y(u, 'kDy'),
         'z': lambda u: self._kernel_op.apply_kernel_op_z(u, 'kDz', 'kDzsh'),
     }[dim]
-    kernel_fn[3] = {
+    kernel_fn[3] = {  # pyrefly: ignore[unsupported-operation]
         'x': lambda u: self._kernel_op.apply_kernel_op_x(u, 'kddx'),
         'y': lambda u: self._kernel_op.apply_kernel_op_y(u, 'kddy'),
         'z': lambda u: self._kernel_op.apply_kernel_op_z(u, 'kddz', 'kddzsh'),
     }[dim]
-    delta_neg = [kf(v) for kf in kernel_fn]
+    delta_neg = [kf(v) for kf in kernel_fn]  # pyrefly: ignore[not-callable]
     return tf.nest.map_structure(tf.abs, delta_neg)
 
   def _rational_layer_single_side(

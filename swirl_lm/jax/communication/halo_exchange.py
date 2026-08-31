@@ -209,14 +209,14 @@ def _get_halo_from_bc(
 
   def neumann_value():
     buf = _get_homogeneous_neumann_bc_order1(
-        array, axis, side.value, plane, grid_params
+        array, axis, side.value, plane, grid_params  # pyrefly: ignore[bad-argument-type]
     )
     sign = -1.0 if side == SideType.LOW else 1.0
     return sign * bc_value + buf
 
   def neumann_value_order2():
     buf = _get_homogeneous_neumann_bc_order2(
-        array, axis, side.value, plane, grid_params
+        array, axis, side.value, plane, grid_params  # pyrefly: ignore[bad-argument-type]
     )
     sign = -1.0 if side == SideType.LOW else 1.0
     return sign * bc_value + buf
@@ -225,11 +225,11 @@ def _get_halo_from_bc(
     return bc_value
 
   def additive_value():
-    buf = _get_additive_bc(array, axis, side.value, plane, grid_params)
+    buf = _get_additive_bc(array, axis, side.value, plane, grid_params)  # pyrefly: ignore[bad-argument-type]
     return bc_value + buf
 
   def no_touch_value():
-    return _get_additive_bc(array, axis, side.value, plane, grid_params)
+    return _get_additive_bc(array, axis, side.value, plane, grid_params)  # pyrefly: ignore[bad-argument-type]
 
   if bc_type == BCType.NEUMANN:
     return neumann_value()
@@ -344,7 +344,7 @@ def _inplace_halo_exchange_1d(
       mesh, axis, low_halo_from_self, high_halo_from_self, periodic
   )
 
-  n = array.shape[grid_params.get_axis_index(axis)]
+  n = array.shape[grid_params.get_axis_index(axis)]  # pyrefly: ignore[bad-index]
 
   result = common_ops.array_scatter_1d_update(
       array,
@@ -416,7 +416,7 @@ def inplace_halo_exchange(
       periodic_dims if periodic_dims is not None else [False] * len(axes)
   )
   boundary_conditions = (
-      boundary_conditions
+      boundary_conditions  # pyrefly: ignore[bad-assignment]
       if boundary_conditions is not None
       else [[None, None]] * len(axes)
   )
@@ -425,8 +425,9 @@ def inplace_halo_exchange(
         f"The number of axes ({len(axes)}) must be equal to the number of"
         f" periodic dimensions ({len(periodic_dims)})."
     )
-  if len(axes) != len(boundary_conditions):
+  if len(axes) != len(boundary_conditions):  # pyrefly: ignore[bad-argument-type]
     raise ValueError(
+        # pyrefly: ignore[bad-argument-type]
         f"The number of axes ({len(axes)}) must be equal to the number of"
         f" boundary conditions ({len(boundary_conditions)})."
     )
@@ -448,11 +449,11 @@ def inplace_halo_exchange(
     return bc_info_plane
 
   with jax.named_scope("HaloExchange"):
-    for axis, periodic, bc in zip(axes, periodic_dims, boundary_conditions):
+    for axis, periodic, bc in zip(axes, periodic_dims, boundary_conditions):  # pyrefly: ignore[bad-argument-type]
       bc_low, bc_high = bc if bc is not None else (None, None)
-      _validate_boundary_condition(bc_low, array, axis, halo_width, grid_params)
+      _validate_boundary_condition(bc_low, array, axis, halo_width, grid_params)  # pyrefly: ignore[bad-argument-type]
       _validate_boundary_condition(
-          bc_high, array, axis, halo_width, grid_params
+          bc_high, array, axis, halo_width, grid_params  # pyrefly: ignore[bad-argument-type]
       )
 
       # Apply halo exchange for each plane in `width`, one by one, from
@@ -544,7 +545,7 @@ def _validate_boundary_condition(
     )
 
   array_shape = list(array.shape)
-  array_shape[grid_params.get_axis_index(axis)] = 1
+  array_shape[grid_params.get_axis_index(axis)] = 1  # pyrefly: ignore[unsupported-operation]
   array_shape = tuple(array_shape)
   for bc_array in bc_value:
     if not isinstance(bc_array, jax.Array):
@@ -590,7 +591,7 @@ def set_halos_to_zero(
     return array
 
   # Edge case: Invalid inputs if any dimension has no interior points at all.
-  nx, ny, nz = grid_params.to_xyz_order(array.shape)
+  nx, ny, nz = grid_params.to_xyz_order(array.shape)  # pyrefly: ignore[bad-argument-type]
 
   if min((nx, ny, nz)) <= halo_width * 2:
     raise ValueError(

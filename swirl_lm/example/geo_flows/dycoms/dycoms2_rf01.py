@@ -83,7 +83,7 @@ class Dycoms2RF01(geophysical_flow_common.GeophysicalFlowSetup):
         'w': self.sim_params.w_init,
     }
     self.coriolis_force_fn = cloud_utils.coriolis_force(
-        self.sim_params.latitude, self.init_wind, self.g_dim)
+        self.sim_params.latitude, self.init_wind, self.g_dim)  # pyrefly: ignore[bad-argument-type]
 
     # Temperature below the cloud, in units of K.
     self.t_base = 289.0
@@ -130,7 +130,7 @@ class Dycoms2RF01(geophysical_flow_common.GeophysicalFlowSetup):
         tf.less_equal(zz, self.cloud_utils.zi),
         self.t_base * tf.ones_like(zz),
         self.t_top
-        + tf.math.pow(tf.maximum(zz - self.cloud_utils.zi, 0.0), 1.0 / 3.0),
+        + tf.math.pow(tf.maximum(zz - self.cloud_utils.zi, 0.0), 1.0 / 3.0),  # pyrefly: ignore[unsupported-operation]
     )
 
     # This condition is specified in Eq. (2) in Stevens, et. al., 2005.
@@ -165,8 +165,8 @@ class Dycoms2RF01(geophysical_flow_common.GeophysicalFlowSetup):
           self.sim_params.u_init,
           self.sim_params.v_init,
           self.config.nu,
-          self.config.dx,
-          self.config.dy,
+          self.config.dx,  # pyrefly: ignore[bad-argument-type]
+          self.config.dy,  # pyrefly: ignore[bad-argument-type]
           self.config.lz,
           self.config.fz,
           self.sim_params.bl_distance,
@@ -189,8 +189,8 @@ class Dycoms2RF01(geophysical_flow_common.GeophysicalFlowSetup):
     return geophysical_flow_utils.perturbed_constant_init_fn(
         seed + self.sim_params.random_seed,
         mean,
-        self.g_dim,
-        core_n,
+        self.g_dim,  # pyrefly: ignore[bad-argument-type]
+        core_n,  # pyrefly: ignore[bad-argument-type]
         rms,
         velocity_init_fn,
     )

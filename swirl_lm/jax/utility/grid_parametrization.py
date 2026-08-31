@@ -31,6 +31,7 @@ import itertools
 from typing import Any, Literal, TypeAlias
 
 from absl import logging
+from google.protobuf import text_format
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -40,8 +41,6 @@ from swirl_lm.jax.utility import grid_parametrization_pb2
 from swirl_lm.jax.utility import stretched_grid_util
 from swirl_lm.jax.utility import types
 from swirl_lm.utility import text_util
-
-from google.protobuf import text_format
 
 ScalarField: TypeAlias = types.ScalarField
 ScalarFieldMap: TypeAlias = types.ScalarFieldMap
@@ -280,11 +279,11 @@ def _set_data_axis_order(data_axis_order: str) -> tuple[str, str, str]:
   Returns:
     A tuple of the axis order.
   """
-  if tuple(data_axis_order) not in itertools.permutations('xyz'):
+  if tuple(data_axis_order) not in itertools.permutations('xyz'):  # pyrefly: ignore[unsupported-operation]
     raise ValueError(
         f'`data_axis_order` {data_axis_order} is not a permutation of "xyz".'
     )
-  return tuple(data_axis_order)
+  return tuple(data_axis_order)  # pyrefly: ignore[bad-return]
 
 
 def _global_xyz_from_config(
@@ -317,7 +316,7 @@ def _global_xyz_from_config(
 
   def get_full_grid(dim: Literal[0, 1, 2]) -> jax.Array:
     if stretched_grid_files[dim]:
-      global_coord = _load_array_from_file(stretched_grid_files[dim])
+      global_coord = _load_array_from_file(stretched_grid_files[dim])  # pyrefly: ignore[bad-argument-type]
       logging.info(
           'Loaded stretched grid in dim %d from file `%s`.',
           dim,
@@ -338,7 +337,7 @@ def _global_xyz_from_config(
     _validate_global_coord(global_coord, core_n[dim], num_core[dim], dim)
     return global_coord
 
-  return tuple(get_full_grid(dim) for dim in (0, 1, 2))
+  return tuple(get_full_grid(dim) for dim in (0, 1, 2))  # pyrefly: ignore[bad-return]
 
 
 # TODO(b/368405442): Adjust definition of a periodic uniform mesh to be
@@ -492,7 +491,7 @@ class GridParametrization(object):
     dx_uniform = _get_grid_spacing(self.fx, self.lx)
     dy_uniform = _get_grid_spacing(self.fy, self.ly)
     dz_uniform = _get_grid_spacing(self.fz, self.lz)
-    self.grid_spacings: tuple[float, float, float] = tuple(
+    self.grid_spacings: tuple[float, float, float] = tuple(  # pyrefly: ignore[bad-assignment]
         _get_stretched_grid_aware_grid_spacing_in_dim(
             (dx_uniform, dy_uniform, dz_uniform),
             dim,
@@ -507,11 +506,11 @@ class GridParametrization(object):
     # to uniform grid.
     stretched_grid_files_xyz = [None] * 3
     if params.stretched_grid_files.HasField('dim_x'):
-      stretched_grid_files_xyz[0] = params.stretched_grid_files.dim_x
+      stretched_grid_files_xyz[0] = params.stretched_grid_files.dim_x  # pyrefly: ignore[unsupported-operation]
     if params.stretched_grid_files.HasField('dim_y'):
-      stretched_grid_files_xyz[1] = params.stretched_grid_files.dim_y
+      stretched_grid_files_xyz[1] = params.stretched_grid_files.dim_y  # pyrefly: ignore[unsupported-operation]
     if params.stretched_grid_files.HasField('dim_z'):
-      stretched_grid_files_xyz[2] = params.stretched_grid_files.dim_z
+      stretched_grid_files_xyz[2] = params.stretched_grid_files.dim_z  # pyrefly: ignore[unsupported-operation]
     self.global_xyz = _global_xyz_from_config(
         self.to_data_axis_order(*stretched_grid_files_xyz),
         self.to_data_axis_order(self.fx, self.fy, self.fz),
@@ -532,7 +531,7 @@ class GridParametrization(object):
               f' periodic stretched grid in axis {axis}.'
           )
         value = domain_size_from_periodic_stretched_grid(
-            (
+            self.to_data_axis_order(
                 params.stretched_grid_files.dim_x,
                 params.stretched_grid_files.dim_y,
                 params.stretched_grid_files.dim_z,
@@ -623,10 +622,10 @@ class GridParametrization(object):
       A tuple of 3 entries in the axis order.
     """
     entries = [None] * 3
-    entries[self.get_axis_index('x')] = x_entry
-    entries[self.get_axis_index('y')] = y_entry
-    entries[self.get_axis_index('z')] = z_entry
-    return tuple(entries)
+    entries[self.get_axis_index('x')] = x_entry  # pyrefly: ignore[unsupported-operation]
+    entries[self.get_axis_index('y')] = y_entry  # pyrefly: ignore[unsupported-operation]
+    entries[self.get_axis_index('z')] = z_entry  # pyrefly: ignore[unsupported-operation]
+    return tuple(entries)  # pyrefly: ignore[bad-return]
 
   def to_xyz_order(self, entries: tuple[Any, Any, Any]) -> tuple[Any, Any, Any]:
     """Returns the entries in the axis order.
@@ -641,7 +640,7 @@ class GridParametrization(object):
     Returns:
       A tuple of 3 entries in x, y, z order.
     """
-    return tuple(entries[i] for i in self.get_axis_index(('x', 'y', 'z')))
+    return tuple(entries[i] for i in self.get_axis_index(('x', 'y', 'z')))  # pyrefly: ignore[not-iterable]
 
   def get_axis_entry(
       self,
@@ -812,7 +811,7 @@ class GridParametrization(object):
 
   @property
   def dx(self) -> float | None:
-    if self.to_xyz_order(self.use_stretched_grid)[self.get_axis_index('x')]:
+    if self.use_stretched_grid[self.get_axis_index('x')]:  # pyrefly: ignore[bad-index]
       raise ValueError(
           'Calling .dx when using stretched grid in dim x is likely an error!'
       )
@@ -823,7 +822,7 @@ class GridParametrization(object):
 
   @property
   def dy(self) -> float | None:
-    if self.to_xyz_order(self.use_stretched_grid)[self.get_axis_index('y')]:
+    if self.use_stretched_grid[self.get_axis_index('y')]:  # pyrefly: ignore[bad-index]
       raise ValueError(
           'Calling .dy when using stretched grid in dim y is likely an error!'
       )
@@ -831,7 +830,7 @@ class GridParametrization(object):
 
   @property
   def dz(self) -> float | None:
-    if self.to_xyz_order(self.use_stretched_grid)[self.get_axis_index('z')]:
+    if self.use_stretched_grid[self.get_axis_index('z')]:  # pyrefly: ignore[bad-index]
       raise ValueError(
           'Calling .dz when using stretched grid in dim z is likely an error!'
       )
@@ -896,9 +895,9 @@ class GridParametrization(object):
     n_local = self.get_axis_entry(
         self.core_nx, self.core_ny, self.core_nz, axis
     )
-    i_core = jax.lax.axis_index(mesh.axis_names[axis_index])
+    i_core = jax.lax.axis_index(mesh.axis_names[axis_index])  # pyrefly: ignore[bad-index]
     if include_halo:
-      grid_full = self.global_xyz_with_halos[axis_index]
+      grid_full = self.global_xyz_with_halos[axis_index]  # pyrefly: ignore[bad-index]
     else:
       grid_full = self.get_axis_entry(self.x, self.y, self.z, axis)
     start = i_core * n_local
@@ -934,7 +933,8 @@ class GridParametrization(object):
     xs = jnp.linspace(0, self.lx, self.cx * self.core_nx)
     ys = jnp.linspace(0, self.ly, self.cy * self.core_ny)
     zs = jnp.linspace(0, self.lz, self.cz * self.core_nz)
-    return jnp.meshgrid(xs, ys, zs, indexing='ij')
+    coords = self.to_data_axis_order(xs, ys, zs)
+    return jnp.meshgrid(*coords, indexing='ij')
 
   def physical_grid_spacing(
       self,
@@ -958,11 +958,11 @@ class GridParametrization(object):
       broadcastable form.
     """
     axis_index = self.get_axis_index(axis)
-    if self.use_stretched_grid[axis_index]:
-      return additional_states[stretched_grid_util.h_key(axis_index)]
+    if self.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
+      return additional_states[stretched_grid_util.h_key(axis_index)]  # pyrefly: ignore[bad-argument-type]
     else:
       n = self.get_axis_entry(self.nx, self.ny, self.nz, axis)
-      h = self.to_xyz_order(self.grid_spacings)[axis_index] * jnp.ones(n)
+      h = self.grid_spacings[axis_index] * jnp.ones(n)  # pyrefly: ignore[bad-index]
       if axis_index == 0:
         return h[:, jnp.newaxis, jnp.newaxis]
       elif axis_index == 1:

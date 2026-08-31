@@ -111,7 +111,7 @@ class HydrostaticEquilibrium():
       if np.abs(np.abs(g_vec[i]) - 1.0) < np.finfo(np.float32).resolution:
         self._g_dim = i
         break
-    self._dh = (self._params.dx, self._params.dy, self._params.dz)[self._g_dim]
+    self._dh = (self._params.dx, self._params.dy, self._params.dz)[self._g_dim]  # pyrefly: ignore[bad-index]
 
   def _temperature_integration_fn(self, t):
     """Computes the integrand in the pressure expression given a T profile.
@@ -200,13 +200,13 @@ class HydrostaticEquilibrium():
     def strip_halos(f):
       """Removes ghost cells in the vertical direction."""
       vertical_halos = [0, 0, 0]
-      vertical_halos[self._g_dim] = self._params.halo_width
+      vertical_halos[self._g_dim] = self._params.halo_width  # pyrefly: ignore[unsupported-operation]
       return common_ops.strip_halos(f, vertical_halos)
 
     # Performs integration to points in the interior domain only.
     integrand = tf.nest.map_structure(integration_fn, strip_halos(t))
     buf, _ = common_ops.integration_in_dim(replica_id, replicas, integrand,
-                                           self._dh, self._g_dim)
+                                           self._dh, self._g_dim)  # pyrefly: ignore[bad-argument-type]
 
     p_interior = tf.nest.map_structure(p_fn, buf)
 
@@ -217,12 +217,12 @@ class HydrostaticEquilibrium():
       # outwards, the integral needs to be reversed on the lower end.
       sign = -1.0 if face == 0 else 1.0
 
-      buf_0 = common_ops.get_face(buf, self._g_dim, face, 0)[0]
+      buf_0 = common_ops.get_face(buf, self._g_dim, face, 0)[0]  # pyrefly: ignore[bad-argument-type]
       p_bc = []
 
       for i in range(self._params.halo_width):
         t_lim = [
-            common_ops.get_face(t, self._g_dim, face,
+            common_ops.get_face(t, self._g_dim, face,  # pyrefly: ignore[bad-argument-type]
                                 self._params.halo_width - i - j)[0]
             for j in range(2)
         ]
@@ -248,13 +248,13 @@ class HydrostaticEquilibrium():
 
     # Update pressure in the ghost cells.
     vertical_paddings = [(0, 0)] * 3
-    vertical_paddings[self._g_dim] = [self._params.halo_width,] * 2
+    vertical_paddings[self._g_dim] = [self._params.halo_width,] * 2  # pyrefly: ignore[unsupported-operation]
     p = common_ops.pad(p_interior, vertical_paddings, 0.0)
 
     bc = [[
         (BCType.NEUMANN, 0.0),
     ] * 2] * 3
-    bc[self._g_dim] = [(BCType.DIRICHLET, get_pressure_bc(i)) for i in range(2)]
+    bc[self._g_dim] = [(BCType.DIRICHLET, get_pressure_bc(i)) for i in range(2)]  # pyrefly: ignore[unsupported-operation]
 
     periodic_dims = [False] * 3
     return halo_exchange.inplace_halo_exchange(p, dims, replica_id, replicas,

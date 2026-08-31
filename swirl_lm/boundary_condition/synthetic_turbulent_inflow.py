@@ -421,7 +421,7 @@ class SyntheticTurbulentInflow(object):
           [additional_states[key] for key in self._rand_keys],
           [additional_states[key] for key in self._mean_keys],
           [additional_states[key] for key in self._rms_keys], replica_id,
-          replicas, seed)
+          replicas, seed)  # pyrefly: ignore[bad-argument-type]
 
       additional_states_updated = {}
       for key, value in additional_states.items():

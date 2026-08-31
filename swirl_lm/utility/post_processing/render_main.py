@@ -115,7 +115,7 @@ def render_at_time(
   filename = f'{output}/{i}.npy'
   logging.info('Writing qc t=%s to %s', t.item(), filename)
   with tf.io.gfile.GFile(filename, 'wb') as f:
-    np.save(f, data)
+    np.save(f, data)  # pyrefly: ignore[bad-argument-type]
 
 
 def rotation_from_euler_str(s: str) -> transform.Rotation:

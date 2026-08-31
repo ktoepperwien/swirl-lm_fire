@@ -384,10 +384,10 @@ def full_grid_from_spec(
     if j == 0:
       if grid_type is GridType.GEOMETRIC:
         # Note: must have z0, dz0 in grid_args.
-        grid = GeometricGrid(**grid_args)
+        grid = GeometricGrid(**grid_args)  # pyrefly: ignore[bad-argument-type]
       elif grid_type is GridType.UNIFORM:
         # Note: must have z0 in grid_args.
-        grid = UniformGrid(**grid_args)
+        grid = UniformGrid(**grid_args)  # pyrefly: ignore[bad-argument-type]
       else:
         raise ValueError(f'Unknown grid type: {grid_type}')
     else:  # j >= 1
@@ -418,9 +418,9 @@ def full_grid_from_spec(
 
       next_z, next_dz = grids[-1].next_z_dz()
       if grid_type is GridType.GEOMETRIC:
-        grid = GeometricGrid(z0=next_z, dz0=next_dz, **grid_args)
+        grid = GeometricGrid(z0=next_z, dz0=next_dz, **grid_args)  # pyrefly: ignore[bad-argument-type]
       elif grid_type is GridType.UNIFORM:
-        grid = UniformGrid(z0=next_z, **grid_args)
+        grid = UniformGrid(z0=next_z, **grid_args)  # pyrefly: ignore[bad-argument-type]
       else:
         raise ValueError(f'Unknown grid type: {grid_type}')
     grids.append(grid)

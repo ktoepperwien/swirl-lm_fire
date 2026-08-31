@@ -60,14 +60,14 @@ class GCMForcing:
     self.rrtmgp_lib = None
     if params.radiative_transfer is not None:
       self.rrtmgp_lib = rrtmgp.RRTMGP(params, grid_extension_lib)
-    self._grid_spacing = (params.dx, params.dy, params.dz)[self._g_dim]
+    self._grid_spacing = (params.dx, params.dy, params.dz)[self._g_dim]  # pyrefly: ignore[bad-index]
     self._sim_params = sim_params
     self._z_i = sim_params.z_i
     self._z_r = sim_params.z_r
     self._tau_r_tropo_sec = sim_params.tau_r_tropo_sec
     self._tau_r_wind_sec = sim_params.tau_r_wind_sec
     # Grid extension is only assumed to be necessary for non-stretched grids.
-    self._use_grid_extension = not params.use_stretched_grid[self._g_dim]
+    self._use_grid_extension = not params.use_stretched_grid[self._g_dim]  # pyrefly: ignore[bad-index]
     # Upper atmosphere states that are required for RRTMGP computations.
     self.upper_atmosphere_state_names = ('rho', 'q_t', 'p_ref', 'T', 'zz')
 
@@ -92,7 +92,7 @@ class GCMForcing:
         self._deriv_lib,
         phi,
         additional_states[gcm_settings.GCM_W_KEY],
-        self._g_dim,
+        self._g_dim,  # pyrefly: ignore[bad-argument-type]
         additional_states,
     )
     return tf.nest.map_structure(
@@ -151,7 +151,7 @@ class GCMForcing:
         additional_states[gcm_settings.GCM_TEMPERATURE_KEY],
         additional_states,
     )
-    vertical_coord_key = ['xx', 'yy', 'zz'][self._g_dim]
+    vertical_coord_key = ['xx', 'yy', 'zz'][self._g_dim]  # pyrefly: ignore[bad-index]
     exner_inv = self._thermodynamics.dry_exner_inverse(
         additional_states[vertical_coord_key], additional_states
     )
@@ -192,7 +192,7 @@ class GCMForcing:
       A `tf.Tensor` with the pointwise free troposphere relaxation coefficient.
     """
     cld_layer = 0.5 * (
-        1.0 - tf.math.cos(np.pi * (z - self._z_i) / (self._z_r - self._z_i))
+        1.0 - tf.math.cos(np.pi * (z - self._z_i) / (self._z_r - self._z_i))  # pyrefly: ignore[unsupported-operation]
     )
     return (
         1.0
@@ -228,9 +228,9 @@ class GCMForcing:
 
     def relaxation_src_fn(phi: tf.Tensor, target: tf.Tensor, zz: tf.Tensor):
       relax_coeff = self._inverse_relaxation_time_scale_fn(zz)
-      return relax_coeff * (target - phi)
+      return relax_coeff * (target - phi)  # pyrefly: ignore[unsupported-operation]
 
-    vertical_coord_key = ['xx', 'yy', 'zz'][self._g_dim]
+    vertical_coord_key = ['xx', 'yy', 'zz'][self._g_dim]  # pyrefly: ignore[bad-index]
     assert vertical_coord_key in additional_states, (
         'Vertical coordinate required in `additional_states` to compute'
         ' spatially variable relaxation coefficient.'
@@ -316,7 +316,7 @@ class GCMForcing:
   ) -> types.FlowFieldMap:
     """Forcing function for the horizontal winds."""
     def wind_relaxation_fn(rho: tf.Tensor, phi: tf.Tensor, target: tf.Tensor):
-      return rho * (target - phi) / self._tau_r_wind_sec
+      return rho * (target - phi) / self._tau_r_wind_sec  # pyrefly: ignore[unsupported-operation]
 
     src_u = tf.nest.map_structure(
         wind_relaxation_fn,

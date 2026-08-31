@@ -374,9 +374,9 @@ def get_init_rho_f(
   # grid point with z=0. Note that if the ground elevation is 0 than the first
   # fuel cell will be in the halo.
 
-  quantized_ground_elevation = tf.math.ceil(ground_elevation / dz) * dz - 2 * dz
+  quantized_ground_elevation = tf.math.ceil(ground_elevation / dz) * dz - 2 * dz  # pyrefly: ignore[unsupported-operation]
   num_full_cells = tf.cast(
-      tf.floor(fuel_bed_height / dz), quantized_ground_elevation.dtype
+      tf.floor(fuel_bed_height / dz), quantized_ground_elevation.dtype  # pyrefly: ignore[unsupported-operation]
   )
   # Note that the number of full cells is one more than given by
   # fuel_bed_height because we also put fuel into the boundary cell (i.e.,
@@ -391,8 +391,8 @@ def get_init_rho_f(
     # Bottom grid points are fully filled with the given fuel density.
     rho_f_bottom = tf.compat.v1.where(
         tf.math.logical_and(
-            zz > quantized_ground_elevation + 0.1 * dz,
-            zz < quantized_full_fuel_height + 0.1 * dz
+            zz > quantized_ground_elevation + 0.1 * dz,  # pyrefly: ignore[unsupported-operation]
+            zz < quantized_full_fuel_height + 0.1 * dz  # pyrefly: ignore[unsupported-operation]
         ),
         fuel_density * tf.ones_like(zz),
         tf.zeros_like(zz),
@@ -401,8 +401,8 @@ def get_init_rho_f(
     # fuel bed height extends into the last grid cell.
     rho_f_top = tf.where(
         tf.math.logical_and(
-            zz >= quantized_full_fuel_height + 0.1 * dz,
-            zz < quantized_full_fuel_height + 1.1 * dz
+            zz >= quantized_full_fuel_height + 0.1 * dz,  # pyrefly: ignore[unsupported-operation]
+            zz < quantized_full_fuel_height + 1.1 * dz  # pyrefly: ignore[unsupported-operation]
         ),
         tf.cast(rho_f_top_val, tf.float32),
         tf.zeros_like(zz),
@@ -435,7 +435,7 @@ class Fire:
     self.firebench_initialization = firebench_initialization
     self.firebench_states_update_fn = firebench_states_update_fn
 
-    self.coriolis_force_fn = cloud_utils.coriolis_force(0.5497607357, {
+    self.coriolis_force_fn = cloud_utils.coriolis_force(0.5497607357, {  # pyrefly: ignore[bad-argument-type]
         'u': self.fire_utils.u_init,
         'v': self.fire_utils.v_init,
         'w': 0.0
@@ -445,7 +445,7 @@ class Fire:
 
     if _TERRAIN_TYPE.value == TerrainType.FILE:
       elevation = terrain_utils.generate_terrain_map_from_file(
-          self.config, _TERRAIN_FILEPATH.value
+          self.config, _TERRAIN_FILEPATH.value  # pyrefly: ignore[bad-argument-type]
       )
     else:
       # Initializes a simple terrain in the computational domain.
@@ -509,7 +509,7 @@ class Fire:
     elif FLAGS.flat_surface_turbulent_inflow:
       self.inflow = self.fire_utils.inflow_generator_init(0)
       self.inflow_update_fn = self.inflow.generate_inflow_update_fn(
-          self.fire_utils.inflow_seed) if self.inflow else None
+          self.fire_utils.inflow_seed) if self.inflow else None  # pyrefly: ignore[bad-argument-type]
     else:
       self.inflow = None
       self.inflow_update_fn = None
@@ -581,7 +581,7 @@ class Fire:
       temperature: tf.Tensor,
   ) -> tf.Tensor:
     """Sets a high temperature region at the specified location."""
-    return temperature + (self.fire_utils.ignition_temperature -
+    return temperature + (self.fire_utils.ignition_temperature -  # pyrefly: ignore[bad-return, unsupported-operation]
                           temperature) * ignition_kernel
 
   def _rescale_horizontal_velocity(
@@ -607,7 +607,7 @@ class Fire:
     u_max = common_ops.global_reduce(
         tf.stack(u_mean),
         tf.math.reduce_max,
-        common_ops.group_replicas(replicas),
+        common_ops.group_replicas(replicas),  # pyrefly: ignore[bad-argument-type]
     )
 
     def u_rescale_preserve_tke_fn(u_new: float):  # pylint: disable=unused-variable
@@ -645,10 +645,10 @@ class Fire:
 
     return (
         tf.nest.map_structure(
-            u_rescale_preserve_intensity_fn(self.fire_utils.u_mean), u_mag
+            u_rescale_preserve_intensity_fn(self.fire_utils.u_mean), u_mag  # pyrefly: ignore[bad-argument-type]
         ),
         tf.nest.map_structure(
-            u_rescale_preserve_intensity_fn(self.fire_utils.v_mean), u_mag
+            u_rescale_preserve_intensity_fn(self.fire_utils.v_mean), u_mag  # pyrefly: ignore[bad-argument-type]
         ),
     )
 
@@ -909,9 +909,9 @@ class Fire:
       elif isinstance(self.inflow,
                       synthetic_turbulent_inflow.SyntheticTurbulentInflow):
         additional_states_updated.update(
-            self.inflow_update_fn(kernel_op, replica_id, replicas,
+            self.inflow_update_fn(kernel_op, replica_id, replicas,  # pyrefly: ignore[bad-argument-type]
                                   states_updated, additional_states_updated,
-                                  params))
+                                  params))  # pyrefly: ignore[bad-argument-count]
 
     # Note that similar logic is applied for updating forcing terms due to
     # sponge and IB. Only variables that are included in the config are
@@ -1005,11 +1005,11 @@ class Fire:
           self.firebench_states_update_fn(
               replica_id,
               replicas,
-              step_id - self.config.start_step,
+              step_id - self.config.start_step,  # pyrefly: ignore[bad-argument-type, unsupported-operation]
               states,
               additional_states,
               params,
-              self.fire_utils.fuel_density,
+              self.fire_utils.fuel_density,  # pyrefly: ignore[bad-argument-type]
           )
       )
 
@@ -1039,7 +1039,7 @@ class Fire:
             'src_w': None,
         }
         drag = self.fire_utils.drag_force_fn(kernel_op, replica_id, replicas,
-                                             states, helper_states, params)
+                                             states, helper_states, params)  # pyrefly: ignore[bad-argument-type]
         src.update({
             'src_u': tf.nest.map_structure(
                 tf.math.add, src['src_u'], drag['src_u']
@@ -1216,16 +1216,16 @@ class Fire:
     if self.init_fn_uvw is None:
       if self.init_bl:
         self.init_fn_uvw = self.map_utils.blasius_uvw_init_fn(
-            self.fire_utils.u_init, self.fire_utils.v_init, self.config.nu,
-            self.config.dx, self.config.dy, self.config.lz, self.config.fz,
+            self.fire_utils.u_init, self.fire_utils.v_init, self.config.nu,  # pyrefly: ignore[bad-argument-type]
+            self.config.dx, self.config.dy, self.config.lz, self.config.fz,  # pyrefly: ignore[bad-argument-type]
             self.blasius_bl_distance, self.blasius_bl_transition,
             self.blasius_bl_fraction, coordinates)
       else:
         self.init_fn_uvw = {
             'u':
-                velocity_bulk_init_fn(self.fire_utils.u_init, ground_elevation),
+                velocity_bulk_init_fn(self.fire_utils.u_init, ground_elevation),  # pyrefly: ignore[bad-argument-type]
             'v':
-                velocity_bulk_init_fn(self.fire_utils.v_init, ground_elevation),
+                velocity_bulk_init_fn(self.fire_utils.v_init, ground_elevation),  # pyrefly: ignore[bad-argument-type]
             'w':
                 velocity_bulk_init_fn(0.0, ground_elevation),
         }
@@ -1250,7 +1250,7 @@ class Fire:
       self.init_fn_uvw = {  # pylint: disable=g-complex-comprehension
           key: geophysical_flow_utils.perturbed_constant_init_fn(
               seed=seed[key] + self.perturb_init_velocity_rand_seed,
-              mean=mean_velocity[key],
+              mean=mean_velocity[key],  # pyrefly: ignore[bad-argument-type]
               g_dim=2,
               local_grid_no_halos=(
                   self.config.nx - 2 * halo_width,
@@ -1273,7 +1273,7 @@ class Fire:
             self.fire_utils.states_init(coordinates, self.init_fn_uvw['w']),
         'p':
             self.fire_utils.states_init(coordinates,
-                                        self.fire_utils.init_fn_zeros),
+                                        self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
     }
 
     if self.fire_utils.t_var in self.config.transport_scalars_names:
@@ -1299,10 +1299,10 @@ class Fire:
           )
       })
     else:
-      output.update({
+      output.update({  # pyrefly: ignore[no-matching-overload]
           'rho':
-              self.config.rho * self.fire_utils.states_init(
-                  coordinates, self.fire_utils.init_fn_ones)
+              self.config.rho * self.fire_utils.states_init(  # pyrefly: ignore[unsupported-operation]
+                  coordinates, self.fire_utils.init_fn_ones)  # pyrefly: ignore[bad-argument-type]
       })
 
     if self.config.use_sgs:
@@ -1314,8 +1314,8 @@ class Fire:
     if self.ib is not None:
       ib_boundary_fn = (
           immersed_boundary_method.interp_1d_coeff_init_fn(  # pylint: disable=g-long-ternary
-              self.map_utils.elevation_map,
-              self.config.g_dim,
+              self.map_utils.elevation_map,  # pyrefly: ignore[bad-argument-type]
+              self.config.g_dim,  # pyrefly: ignore[bad-argument-type]
               (self.config.cx, self.config.cy, self.config.cz),
           )
           if self.ib.type
@@ -1343,7 +1343,7 @@ class Fire:
       # Update the initial velocity so that it is 0 inside the solid.
       output.update(
           {
-              key: output[key] * output['ib_interior_mask']
+              key: output[key] * output['ib_interior_mask']  # pyrefly: ignore[unsupported-operation]
               for key in ('u', 'v', 'w')
           }
       )
@@ -1379,9 +1379,9 @@ class Fire:
         init_rho_f = get_init_rho_f(
             ground_elevation,
             self.fire_utils.fuel_bed_height,
-            self.fire_utils.fuel_density,
+            self.fire_utils.fuel_density,  # pyrefly: ignore[bad-argument-type]
             self.fuel_start_x,
-            self.config.dz,
+            self.config.dz,  # pyrefly: ignore[bad-argument-type]
         )
       output.update({
           'rho_f':
@@ -1404,26 +1404,26 @@ class Fire:
                                           self.fire_utils.init_fn_t),
           'src_rho':
               self.fire_utils.states_init(coordinates,
-                                          self.fire_utils.init_fn_zeros),
+                                          self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
           'src_{}'.format(self.fire_utils.t_var):
               self.fire_utils.states_init(coordinates,
-                                          self.fire_utils.init_fn_zeros),
+                                          self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
           'src_Y_O':
               self.fire_utils.states_init(coordinates,
-                                          self.fire_utils.init_fn_zeros),
+                                          self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
           'nu_t':
               self.fire_utils.states_init(coordinates,
-                                          self.fire_utils.init_fn_zeros),
+                                          self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
           'tke':
               self.fire_utils.states_init(coordinates,
-                                          self.fire_utils.init_fn_zeros),
+                                          self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
           'ignition_kernel':
               self.fire_utils.states_init(coordinates, init_ignition_kernel),
       })
       if self.ib is not None:
         output.update({
             'ignition_kernel':
-                output['ignition_kernel'] * output['ib_interior_mask']
+                output['ignition_kernel'] * output['ib_interior_mask']  # pyrefly: ignore[unsupported-operation]
         })
 
       # Add additional states required if moisture is considered in the
@@ -1438,7 +1438,7 @@ class Fire:
                                             'CONSTANT'),
             'phi_w':
                 self.fire_utils.states_init(coordinates,
-                                            self.fire_utils.init_fn_zeros),
+                                            self.fire_utils.init_fn_zeros),  # pyrefly: ignore[bad-argument-type]
         })
 
     if isinstance(self.inflow,
@@ -1489,7 +1489,7 @@ class Fire:
       output.update(self.fire_utils.sponge_init(coordinates))
       # TODO(bcg): Move sponge initialization code to rayleigh_damping_layer.py.
       # We have similar code elsewhere, too.
-      for sponge in self.config.sponge:
+      for sponge in self.config.sponge:  # pyrefly: ignore[not-iterable]
         for variable in sponge.variable_info:
           # Add the target state if requested.
           if variable.WhichOneof('target') == 'target_state_name':
@@ -1517,8 +1517,8 @@ class Fire:
               )
               z_0 = 0.15
               sponge_fn = init_fn_lib.logarithmic_boundary_layer(
-                  self.fire_utils.u_mean,
-                  self.fire_utils.v_mean,
+                  self.fire_utils.u_mean,  # pyrefly: ignore[bad-argument-type]
+                  self.fire_utils.v_mean,  # pyrefly: ignore[bad-argument-type]
                   z_0,
                   self.map_utils.local_elevation_map(coordinates),
               )[variable.name]
@@ -1540,14 +1540,14 @@ class Fire:
           output.update({
               'src_{}'.format(variable.name):
                   self.fire_utils.states_init(coordinates,
-                                              self.fire_utils.init_fn_zeros)
+                                              self.fire_utils.init_fn_zeros)  # pyrefly: ignore[bad-argument-type]
           })
 
     if self.fire_utils.use_geo:
       output.update({
           'zz':
               self.fire_utils.states_init(
-                  coordinates, lambda xx, yy, zz, lx, ly, lz, coord: zz)
+                  coordinates, lambda xx, yy, zz, lx, ly, lz, coord: zz)  # pyrefly: ignore[bad-argument-type]
       })
 
     if self.config.dbg:

@@ -59,11 +59,11 @@ class Transform:
 
   def __init__(self, transform_matrix: np.typing.ArrayLike):
     assert (
-        transform_matrix.ndim == 2
+        transform_matrix.ndim == 2  # pyrefly: ignore[missing-attribute]
     ), f'Expected 2D matrix but got ndim={transform_matrix.ndim}'
     assert (
-        transform_matrix.shape[0] == transform_matrix.shape[1]
-    ), f'Expected square matrix but got shape={transform_matrix.shape}'
+        transform_matrix.shape[0] == transform_matrix.shape[1]  # pyrefly: ignore[missing-attribute]
+    ), f'Expected square matrix but got shape={transform_matrix.shape}'  # pyrefly: ignore[missing-attribute]
     self.matrix = np.asarray(transform_matrix, dtype=np.float64)
 
   def apply(self, points: np.typing.ArrayLike) -> np.ndarray:
@@ -233,7 +233,7 @@ def align_coords(
   for i, j, k in itertools.product(*([(0, -1)] * 3)):
     corners.append(
         c_to_i.apply(
-            [[coords_list[0][i], coords_list[1][j], coords_list[2][k], 1]]
+            [[coords_list[0][i], coords_list[1][j], coords_list[2][k], 1]]  # pyrefly: ignore[bad-argument-type]
         )[0]
     )
   corners = np.array(corners)
@@ -484,7 +484,7 @@ def plot(
   cmap_earth = mcolors.LinearSegmentedColormap.from_list(None, ['#020', '#562'])
   im = ax.imshow(surface.T, cmap=cmap_earth, origin='lower', vmin=0, vmax=1)
   im_transform = mtransforms.Affine2D(
-      surface_transform.matrix[[0, 1, 3]][:, [0, 1, 3]]
+      surface_transform.matrix[[0, 1, 3]][:, [0, 1, 3]]  # pyrefly: ignore[missing-attribute]
   )
   im.set_transform(im_transform + ax.transData)
 

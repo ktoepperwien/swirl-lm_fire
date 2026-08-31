@@ -245,7 +245,7 @@ def _interpolate_for_one_target_core(
   data = tf.transpose(
       load_and_merge_serialized_tensor(source_prefix, varname, source_step,
                                        source_nc, source_halo, mode,
-                                       tuple(core_limits)), axis)
+                                       tuple(core_limits)), axis)  # pyrefly: ignore[bad-argument-type]
 
   prev = tf.identity(data)
   for dim in range(3):
@@ -325,7 +325,7 @@ def sequential_interpolate_distributed_serialized_tensor(
    j_1,
    factor) = _get_global_interp_info(source_nc,
                                      source_halo,
-                                     source_grid,
+                                     source_grid,  # pyrefly: ignore[bad-argument-type]
                                      target_nc,
                                      target_halo,
                                      target_grid)
@@ -400,7 +400,7 @@ def load_and_merge_serialized_tensor(
   axis = [mode.find(dim) for dim in ('x', 'y', 'z')]
   dims = _get_dimension_from_mode(mode)
 
-  halo_width = np.array(halo_width)[dims]
+  halo_width = np.array(halo_width)[dims]  # pyrefly: ignore[bad-assignment]
 
   tensor = []
 
@@ -464,7 +464,7 @@ def distribute_and_write_serialized_tensor(
   orientation_fn = lambda f: np.array(f)[dims]
   n_local = [n / c for n, c in zip(tensor.shape, orientation_fn(n_core))]
 
-  halo_width = orientation_fn(halo_width)
+  halo_width = orientation_fn(halo_width)  # pyrefly: ignore[bad-assignment]
   paddings = [[h,] * 2 for h in halo_width]
   tensor_full = tf.pad(tensor, paddings)
 
@@ -483,7 +483,7 @@ def distribute_and_write_serialized_tensor(
   iter_range = itertools.product(*[range(c) for c in n_core])
   replicas = list(iter_range)
 
-  with pool.ThreadPool(np.prod(n_core)) as p:
+  with pool.ThreadPool(np.prod(n_core)) as p:  # pyrefly: ignore[bad-argument-type]
     p.map(write_file, replicas)
     p.close()
     p.join()

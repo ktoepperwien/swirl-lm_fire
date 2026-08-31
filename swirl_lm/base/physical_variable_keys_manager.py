@@ -152,7 +152,7 @@ class BoundaryConditionKeysHelper(PhysicalVariableKeysHelper):
 
     return (varname, dim, face)
 
-  def _update_helper_variable_from_additional_states(
+  def _update_helper_variable_from_additional_states(  # pyrefly: ignore[bad-override]
       self,
       additional_states: types.FlowFieldMap,
       halo_width: int,
@@ -184,7 +184,7 @@ class BoundaryConditionKeysHelper(PhysicalVariableKeysHelper):
 
       bc_value = []
       for i in range(halo_width):
-        bc_value += common_ops.get_face(value, dim, face, i)
+        bc_value += common_ops.get_face(value, dim, face, i)  # pyrefly: ignore[unsupported-operation]
 
       # The order of the slices is from the outermost to the innermost. On the
       # higher end it needs to be reversed.
@@ -262,7 +262,7 @@ class SourceKeysHelper(PhysicalVariableKeysHelper):
     key_info = self._parse_key_text_info(additional_state_key)
     return None if key_info is None else key_info[0]
 
-  def _update_helper_variable_from_additional_states(
+  def _update_helper_variable_from_additional_states(  # pyrefly: ignore[bad-override]
       self,
       additional_states: types.FlowFieldMap,
   ) -> types.FlowFieldMap:

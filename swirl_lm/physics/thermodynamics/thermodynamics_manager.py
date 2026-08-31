@@ -71,7 +71,7 @@ class ThermodynamicsManager(object):
       additional_states: Optional[FlowFieldMap] = None,
   ) -> FlowFieldVal:
     """Generates the reference pressure."""
-    return self.model.p_ref(zz, additional_states)
+    return self.model.p_ref(zz, additional_states)  # pyrefly: ignore[bad-argument-type]
 
   def update_density(
       self,

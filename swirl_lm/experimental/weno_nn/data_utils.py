@@ -121,7 +121,7 @@ def create_loader_from_pickle(
   source = CustomDataSource(u_bar=u_bar, u_half_p=u_half_p)
 
   data_loader = pygrain.load(
-      source=source,
+      source=source,  # pyrefly: ignore[bad-argument-type]
       num_epochs=num_epochs,
       shuffle=True,
       seed=seed,

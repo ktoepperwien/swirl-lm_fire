@@ -114,7 +114,7 @@ class LookupCloudOptics(loader.DataLoaderBase, metaclass=abc.ABCMeta):
     return data
 
   @classmethod
-  def from_nc_file(cls, path: str) -> 'LookupCloudOptics':
+  def from_nc_file(cls, path: str) -> 'LookupCloudOptics':  # pyrefly: ignore[bad-override]
     """Instantiates a `LookupCloudOptics` object from a netCDF file.
 
     The netCDF file should contain the lookup tables for the extinction

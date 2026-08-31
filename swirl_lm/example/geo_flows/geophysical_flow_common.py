@@ -82,15 +82,15 @@ class GeophysicalFlowSetup:
         f'`{varname}` not available in sounding. Available vars are: '
         f'{self.sounding.keys}'
     )
-    z = self.core_n[self.g_dim] * z_coord
+    z = self.core_n[self.g_dim] * z_coord  # pyrefly: ignore[bad-index]
     nz = (
-        self.core_n[self.g_dim]
+        self.core_n[self.g_dim]  # pyrefly: ignore[bad-index]
         if self.init_mode == 'PAD'
-        else self.core_n_full[self.g_dim]
+        else self.core_n_full[self.g_dim]  # pyrefly: ignore[bad-index]
     )
 
     thin_shape = [1, 1, 1]
-    thin_shape[self.g_dim] = -1
+    thin_shape[self.g_dim] = -1  # pyrefly: ignore[unsupported-operation]
     profile_slice = tf.reshape(
         self.sounding[varname][z : z + nz],
         thin_shape
@@ -99,7 +99,7 @@ class GeophysicalFlowSetup:
     repeats = (
         list(self.core_n) if self.init_mode == 'PAD' else list(self.core_n_full)
     )
-    repeats[self.g_dim] = 1
+    repeats[self.g_dim] = 1  # pyrefly: ignore[unsupported-operation]
     return tf.tile(profile_slice, repeats)
 
   def _init_fn_from_sounding(
@@ -298,9 +298,9 @@ def bubble(
   ) -> tf.Tensor:
     """Computes the perturbation of the bubble centered in the x-y plane."""
     normalized_distance = tf.sqrt(
-        ((x - 0.5 * lx) / rh) ** 2
-        + ((y - 0.5 * ly) / rh) ** 2
-        + ((z - z_loc) / rv) ** 2
+        ((x - 0.5 * lx) / rh) ** 2  # pyrefly: ignore[unsupported-operation]
+        + ((y - 0.5 * ly) / rh) ** 2  # pyrefly: ignore[unsupported-operation]
+        + ((z - z_loc) / rv) ** 2  # pyrefly: ignore[unsupported-operation]
     )
     return tf.where(
         tf.math.less(normalized_distance, 1.0),

@@ -75,7 +75,7 @@ def halo_update_for_compatibility_fn(
 
   def halo_update_fn(p: FlowFieldVal) -> FlowFieldVal:
     """Updates the halo following the divergence theorem."""
-    nz = len(p)
+    nz = len(p)  # pyrefly: ignore[bad-argument-type]
     nx, ny = p[0].get_shape().as_list()
     lx = dx * (nx - 2 * halo_width) * computation_shape[0]
     ly = dy * (ny - 2 * halo_width) * computation_shape[1]
@@ -464,10 +464,10 @@ class ThreeWeightForPressure(base_poisson_solver.PoissonSolver):
     w0, w1, w2, rhs = self._generate_weights_and_modified_rhs(
         rhs,
         additional_states,
-        self._params.use_3d_tf_tensor,
+        self._params.use_3d_tf_tensor,  # pyrefly: ignore[missing-attribute]
         self._params.use_stretched_grid,
         (self._params.nx, self._params.ny, self._params.nz),
-        self._params.solver_mode,
+        self._params.solver_mode,  # pyrefly: ignore[missing-attribute]
     )
 
     rhs_mean = common_ops.global_mean(rhs, replicas, (self._halo_width,) * 3)
@@ -517,10 +517,10 @@ class ThreeWeightForPressure(base_poisson_solver.PoissonSolver):
     w0, w1, w2, rhs = self._generate_weights_and_modified_rhs(
         rhs,
         additional_states,
-        self._params.use_3d_tf_tensor,
+        self._params.use_3d_tf_tensor,  # pyrefly: ignore[missing-attribute]
         self._params.use_stretched_grid,
         (self._params.nx, self._params.ny, self._params.nz),
-        self._params.solver_mode,
+        self._params.solver_mode,  # pyrefly: ignore[missing-attribute]
     )
     return self._three_weight_jacobi_solver.residual(p, w0, w1, w2, rhs)
 

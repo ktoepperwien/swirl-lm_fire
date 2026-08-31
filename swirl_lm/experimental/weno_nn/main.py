@@ -57,7 +57,7 @@ def main(argv):
   # race conditions.
   if jax.process_index() == 0:
     with tf.io.gfile.GFile(
-        name=osp.join(workdir, "config.json"), mode="w"
+        name=osp.join(workdir, "config.json"), mode="w"  # pyrefly: ignore[no-matching-overload]
     ) as f:
       conf_json = config.to_json_best_effort()
       if isinstance(conf_json, str):  # Sometimes `.to_json()` returns string
@@ -83,8 +83,8 @@ def main(argv):
   act_fun = utils.get_act_func(config.act_fun)
   omega_nn = weno_nn.OmegaNN(
       features=config.features,
-      features_fun=features_fun,
-      act_fun=act_fun,
+      features_fun=features_fun,  # pyrefly: ignore[bad-argument-type]
+      act_fun=act_fun,  # pyrefly: ignore[bad-argument-type]
       dtype=jnp.float64,
   )
 
@@ -127,7 +127,7 @@ def main(argv):
   bundle_ckpt = {"model": state, "config": config, "losses": dict_losses}
 
   orbax_checkpointer.save(
-      workdir + "/checkpoints", bundle_ckpt
+      workdir + "/checkpoints", bundle_ckpt  # pyrefly: ignore[unsupported-operation]
   )
 
 

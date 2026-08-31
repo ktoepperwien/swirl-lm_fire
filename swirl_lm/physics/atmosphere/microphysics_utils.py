@@ -52,7 +52,7 @@ def select_microphysics(
     thermodynamics: thermodynamics_manager.ThermodynamicsManager,
 ) -> microphysics_generic.MicrophysicsAdapter:
   """Selects the microphysics model by `model_name`."""
-  model_params = _get_model_params_from_proto(params.microphysics)
+  model_params = _get_model_params_from_proto(params.microphysics)  # pyrefly: ignore[bad-argument-type]
   assert isinstance(thermodynamics.model, water.Water), (
       '`water` is required as the thermodynamics model to use'
       f' microphysics models, but {thermodynamics.model} is provided.'

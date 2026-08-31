@@ -198,7 +198,7 @@ class SimulatedTurbulentInflow():
       start_step_id: int,
   ) -> Tuple[int, int, float]:
     """Computes the core and local indices for time with fraction of delta t."""
-    t = self._params.dt * tf.cast(step_id - start_step_id, dtype=types.TF_DTYPE)
+    t = self._params.dt * tf.cast(step_id - start_step_id, dtype=types.TF_DTYPE)  # pyrefly: ignore[unsupported-operation]
     t_index_global = tf.cast(t // self._model_params.delta_t, dtype=tf.int32)
     core_index = tf.cast(
         t_index_global // self._inflow_data_shape[0], dtype=tf.int32)
@@ -209,7 +209,7 @@ class SimulatedTurbulentInflow():
         dtype=tf.int32)
     t_fraction = tf.math.divide(
         tf.math.floormod(
-            tf.cast(step_id - start_step_id, dtype=tf.int32), t_scale), t_scale)
+            tf.cast(step_id - start_step_id, dtype=tf.int32), t_scale), t_scale)  # pyrefly: ignore[unsupported-operation]
     return core_index, plane_index, tf.cast(t_fraction, dtype=types.TF_DTYPE)
 
   def initialize_inflow(self) -> types.FlowFieldMap:
@@ -282,7 +282,7 @@ class SimulatedTurbulentInflow():
       """Gets the plane of `varname` at `self._mesh_idx` for all cores."""
       return tf.squeeze(tf.stack(
           common_ops.get_face(states[varname], self._inflow_dim, 0,
-                              self._mesh_idx)[0]))
+                              self._mesh_idx)[0]))  # pyrefly: ignore[bad-argument-type]
 
     # Get the core and local plane indices of the receiver.
     receiver_core_id, local_plane_id, t_fraction = (
@@ -310,7 +310,7 @@ class SimulatedTurbulentInflow():
       )
       varname = m.group(1).lower()
       inflow_plane = self._get_source_data(
-          get_inflow_plane(varname), replicas, self._sender_core_id)
+          get_inflow_plane(varname), replicas, self._sender_core_id)  # pyrefly: ignore[bad-argument-type]
       updated_inflow_data_dim = tf.tensor_scatter_nd_update(
           additional_states[inflow_name], [[local_plane_id]],
           inflow_plane[tf.newaxis, ...])
@@ -346,7 +346,7 @@ class SimulatedTurbulentInflow():
       # data is used is greater than those generated, the inflow BC re-iterates
       # from the beginning of the inflow data after it reaches the last plane.
       t = tf.cast(
-          step_id - self._model_params.start_step_id,
+          step_id - self._model_params.start_step_id,  # pyrefly: ignore[unsupported-operation]
           dtype=types.TF_DTYPE) * self._params.dt
       t_cycle = self._model_params.nt * self._model_params.delta_t
       step_id_recoil = tf.math.round((t % t_cycle) / self._params.dt)

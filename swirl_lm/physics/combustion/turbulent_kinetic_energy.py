@@ -52,7 +52,7 @@ def _update_local_halos(value: FlowFieldVal, halo_width: int) -> FlowFieldVal:
     ]
     # pylint: enable=g-complex-comprehension
     return (
-        [value_xy_valid[0]] * halo_width
+        [value_xy_valid[0]] * halo_width  # pyrefly: ignore[bad-return]
         + value_xy_valid
         + [value_xy_valid[-1]] * halo_width
     )

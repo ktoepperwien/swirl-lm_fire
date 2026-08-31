@@ -342,7 +342,7 @@ class Velocity(object):
                 dt,
                 i,
                 additional_states,
-                bc_types=tuple(self._params.bc_type[i]),
+                bc_types=tuple(self._params.bc_type[i]),  # pyrefly: ignore[bad-argument-type]
                 varname=_KEYS_MOMENTUM[i],
                 halo_width=self._params.halo_width,
                 scheme=self._params.convection_scheme,
@@ -465,7 +465,7 @@ class Velocity(object):
         for velocity_key in velocity_components:
           bc_planes = bc_planes_for_wall(states[velocity_key], dim, face)
 
-          self._bc[velocity_key][dim][face] = (halo_exchange.BCType.DIRICHLET,
+          self._bc[velocity_key][dim][face] = (halo_exchange.BCType.DIRICHLET,  # pyrefly: ignore[unsupported-operation]
                                                bc_planes)
 
   def update_velocity_halos(
@@ -505,7 +505,7 @@ class Velocity(object):
       self,
       states: FlowFieldMap,
       additional_states: FlowFieldMap,
-  ) ->...:
+  ):
     """Generates a dictionary of helper variables for term closures.
 
     Args:
@@ -659,7 +659,7 @@ class Velocity(object):
           replicas=replicas,
           additional_states=additional_states,
       )
-      nu = self._params.nu + nu_t
+      nu = self._params.nu + nu_t  # pyrefly: ignore[unsupported-operation]
     else:
       nu = tf.constant(self._params.nu, dtype=types.TF_DTYPE)
 
@@ -706,7 +706,7 @@ class Velocity(object):
                                                        _KEY_V: v,
                                                        _KEY_W: w
                                                    }, additional_states,
-                                                   self._bc)
+                                                   self._bc)  # pyrefly: ignore[bad-argument-type]
       u = velocity_ib_updated[_KEY_U]
       v = velocity_ib_updated[_KEY_V]
       w = velocity_ib_updated[_KEY_W]
@@ -721,7 +721,7 @@ class Velocity(object):
     })
 
     if 'nu_t' in additional_states.keys() and self._use_sgs:
-      updated_velocity.update({'nu_t': nu_t})
+      updated_velocity.update({'nu_t': nu_t})  # pyrefly: ignore[unbound-name]
 
     updated_velocity.update(
         self._maybe_update_diagnostics(additional_states, states_0, u))
@@ -770,10 +770,10 @@ class Velocity(object):
       if (self._thermodynamics.solver_mode ==
           thermodynamics_pb2.Thermodynamics.ANELASTIC):
         # jth component of vector equation (ρu) <- (ρu) - dt ρ₀ ∇ (α₀ δp)
-        return rho_u_j - dt * rho * grad_j_dp
+        return rho_u_j - dt * rho * grad_j_dp  # pyrefly: ignore[bad-return, unsupported-operation]
       else:
         # jth component of vector equation (ρu) <- (ρu) - dt ∇ δp
-        return rho_u_j - dt * grad_j_dp
+        return rho_u_j - dt * grad_j_dp  # pyrefly: ignore[bad-return, unsupported-operation]
 
     momentum_keys = (_KEY_RHO_U, _KEY_RHO_V, _KEY_RHO_W)
     states_new = {
@@ -805,7 +805,7 @@ class Velocity(object):
     if self._ib is not None:
       states_buf = self._ib.update_states(self._kernel_op, replica_id, replicas,
                                           states_buf, additional_states,
-                                          self._bc)
+                                          self._bc)  # pyrefly: ignore[bad-argument-type]
 
     states_new.update(
         self.update_velocity_halos(replica_id, replicas, states_buf, states_0))

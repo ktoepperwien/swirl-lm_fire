@@ -101,8 +101,8 @@ class Channel:
         y_max = 0.5 * self.params.ly
         p_max = y_min * y_max
       else:
-        y_min = -0.5 * self.params.dy
-        y_max = ly + 0.5 * self.params.dy
+        y_min = -0.5 * self.params.dy  # pyrefly: ignore[unsupported-operation]
+        y_max = ly + 0.5 * self.params.dy  # pyrefly: ignore[unsupported-operation]
         p_max = (0.5 * ly - y_min) * (0.5 * ly - y_max)
       return c / p_max * (yy - y_min) * (yy - y_max)
 

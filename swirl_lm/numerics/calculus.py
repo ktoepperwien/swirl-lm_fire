@@ -47,8 +47,8 @@ def grad(
   """
   n_dim = len(tf.convert_to_tensor(field_vars).shape)
   if n_dim == 3:
-    return [
-        deriv_lib.deriv_centered(field_vars, dim, additional_states)
+    return [  # pyrefly: ignore[bad-return]
+        deriv_lib.deriv_centered(field_vars, dim, additional_states)  # pyrefly: ignore[bad-argument-type]
         for dim in (0, 1, 2)
     ]
   elif n_dim == 4:

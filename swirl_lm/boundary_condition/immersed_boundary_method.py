@@ -314,7 +314,7 @@ def interp_1d_coeff_init_fn(
 
     return interp_tensor_lo + interp_tensor_hi
 
-  return init_fn
+  return init_fn  # pyrefly: ignore[bad-return]
 
 
 def get_fluid_solid_interface_value_z(
@@ -337,7 +337,7 @@ def get_fluid_solid_interface_value_z(
     layer contacting the solid.
   """
   interface_val = tf.zeros_like(value[0])
-  for i in range(len(value)):
+  for i in range(len(value)):  # pyrefly: ignore[bad-argument-type]
     interface_val += value[i] * ib_boundary_mask[i]
 
   cx, cy, _ = replicas.shape
@@ -509,7 +509,7 @@ class ImmersedBoundaryMethod(object):
 
       for variable in self._ib_params.sponge.variables:
         force_name = self.ib_force_name(variable.name)
-        output.update({force_name: states_init(init_fn_zeros)})
+        output.update({force_name: states_init(init_fn_zeros)})  # pyrefly: ignore[bad-argument-type]
 
         # Allocate a placeholder for the fluid-solid interface mask. True values
         # of this mask need to be initialized separately, e.g. in the preprocess
@@ -519,16 +519,16 @@ class ImmersedBoundaryMethod(object):
           ib_boundary_fn = (
               ib_boundary_mask_fn
               if ib_boundary_mask_fn is not None else init_fn_zeros)
-          output.update({'ib_boundary': states_init(ib_boundary_fn)})
+          output.update({'ib_boundary': states_init(ib_boundary_fn)})  # pyrefly: ignore[bad-argument-type]
           ib_boundary_included = True
     elif self.type == 'feedback_force_1d_interp':
-      output['ib_boundary'] = states_init(ib_boundary_mask_fn)
+      output['ib_boundary'] = states_init(ib_boundary_mask_fn)  # pyrefly: ignore[bad-argument-type]
 
       for variable in self._ib_params.sponge.variables:
         force_name = self.ib_force_name(variable.name)
-        output.update({force_name: states_init(init_fn_zeros)})
+        output.update({force_name: states_init(init_fn_zeros)})  # pyrefly: ignore[bad-argument-type]
     elif self.type in ('cartesian_grid', 'mac'):
-      output['ib_boundary'] = states_init(ib_boundary_mask_fn)
+      output['ib_boundary'] = states_init(ib_boundary_mask_fn)  # pyrefly: ignore[bad-argument-type]
 
     return output
 
@@ -752,7 +752,7 @@ class ImmersedBoundaryMethod(object):
       """Generates the sponge force for variable `var_name` within the solid."""
       a_max = np.power(damping_coeff * self._params.dt, -1)
 
-      force = -a_max * (value - target_value) * (1.0 - mask)
+      force = -a_max * (value - target_value) * (1.0 - mask)  # pyrefly: ignore[unsupported-operation]
       return force if override else original_force + force
 
     additional_states_new = {}
@@ -783,7 +783,7 @@ class ImmersedBoundaryMethod(object):
           force_name: tf.nest.map_structure(
               lambda value, original_force, mask: update_sponge_force(
                   value,
-                  target_value,  # pylint: disable=cell-var-from-loop
+                  target_value,  # pylint: disable=cell-var-from-loop  # pyrefly: ignore[bad-argument-type]
                   original_force,
                   damping_coeff,  # pylint: disable=cell-var-from-loop
                   mask,

@@ -82,13 +82,13 @@ def _mg_cycle_internal(x: Tiles,
     else:
       # Combine the `b` subgrids to get the full `b`. Multiply by `A_inv`, then
       # take the subgrid corresponding to this core.
-      b_subgrids = common_ops.cross_replica_gather(b_stacked, num_replicas)
+      b_subgrids = common_ops.cross_replica_gather(b_stacked, num_replicas)  # pyrefly: ignore[bad-argument-type]
       b_full_grid = tpu_util.combine_subgrids(b_subgrids, replicas)
       x_full_grid = multigrid_utils.matmul(
           a_inv_for_coarsest_level, multigrid_utils.zero_borders(b_full_grid))
       return multigrid_3d_utils.unstack(
-          initializer.subgrid_of_3d_tensor(x_full_grid, subgrid_shape,
-                                           coordinates))
+          initializer.subgrid_of_3d_tensor(x_full_grid, subgrid_shape,  # pyrefly: ignore[bad-argument-type]
+                                           coordinates))  # pyrefly: ignore[bad-argument-type]
   x = homogeneous_smoother_fn(x, b)
 
   pss, rss = prs
@@ -97,12 +97,12 @@ def _mg_cycle_internal(x: Tiles,
 
   def body(i, x, err_c):
     res = dirichlet0_halo_exchange_fn(residual_fn(x, b))
-    res_c = multigrid_3d_utils.kronecker_products(rs, res)  # Restrict.
+    res_c = multigrid_3d_utils.kronecker_products(rs, res)  # Restrict.  # pyrefly: ignore[bad-argument-type]
     err_c = recurse(err_c, res_c)
     # Prolong.
     x = [
         x_ + err_
-        for x_, err_ in zip(x, multigrid_3d_utils.kronecker_products(ps, err_c))
+        for x_, err_ in zip(x, multigrid_3d_utils.kronecker_products(ps, err_c))  # pyrefly: ignore[bad-argument-type]
     ]
 
     x = homogeneous_smoother_fn(x, b)
@@ -178,12 +178,12 @@ def mg_cycle(
     dirichlet0_halo_exchange_fn = multigrid_3d_utils.zero_borders
   else:
     dirichlet0_halo_exchange_fn = multigrid_utils.halo_exchange_step_fn(
-        replica_id, replicas, halo_exchange_utils.homogeneous_bcs())
+        replica_id, replicas, halo_exchange_utils.homogeneous_bcs())  # pyrefly: ignore[bad-argument-type]
 
   def body(i, x):
     x = _mg_cycle_internal(
         x, b, prs, homogeneous_smoother_fn, residual_fn,
-        dirichlet0_halo_exchange_fn, a_inv_for_coarsest_level, n_coarse,
+        dirichlet0_halo_exchange_fn, a_inv_for_coarsest_level, n_coarse,  # pyrefly: ignore[bad-argument-type]
         replica_id, replicas, coordinates)
     return i + 1, x
 
@@ -212,7 +212,7 @@ def poisson_mg_cycle_fn_for_one_core(  # pytype: disable=annotation-type-mismatc
     boundary_conditions: Optional[
         halo_exchange_utils.BoundaryConditionsSpec] = None,
     num_cycles: int = 1,
-    dtype: np.dtype = np.float32
+    dtype: np.dtype = np.float32  # pyrefly: ignore[bad-function-definition]
 ) -> Callable[[Tiles, Tiles], Tiles]:
   """Returns a Poisson single-core `mg_cycle` function.
 
@@ -255,7 +255,7 @@ def poisson_mg_cycle_fn_for_one_core(  # pytype: disable=annotation-type-mismatc
       multigrid_3d_utils.get_apply_one_core_boundary_conditions_fn(
           boundary_conditions, homogeneous=True))
   homogeneous_smoother_fn = multigrid_3d_utils.poisson_jacobi_fn_for_one_core(
-      params, n_smooth, weight, homogeneous_halo_exchange_fn)
+      params, n_smooth, weight, homogeneous_halo_exchange_fn)  # pyrefly: ignore[bad-argument-type]
 
   apply_boundary_conditions_fn = (
       multigrid_3d_utils.get_apply_one_core_boundary_conditions_fn(
@@ -281,13 +281,13 @@ def poisson_mg_cycle_fn_for_one_core(  # pytype: disable=annotation-type-mismatc
     zeros_like = tf.zeros_like if isinstance(x[0], tf.Tensor) else np.zeros_like
     x0 = [zeros_like(x[0]) for _ in range(len(x))]
     xb = apply_boundary_conditions_fn(x) if apply_boundary_conditions_fn else x
-    b_minus_a_xb = [b_ - a_xb for b_, a_xb in zip(b, a_operator(xb))]
+    b_minus_a_xb = [b_ - a_xb for b_, a_xb in zip(b, a_operator(xb))]  # pyrefly: ignore[bad-argument-type]
 
     x0 = mg_cycle(
         x0, b_minus_a_xb, prs, homogeneous_smoother_fn, residual_fn,
         a_inv_for_coarsest_level, n_coarse, num_cycles=num_cycles)
 
-    return [x0_ + xb_ for x0_, xb_ in zip(x0, xb)]
+    return [x0_ + xb_ for x0_, xb_ in zip(x0, xb)]  # pyrefly: ignore[unsupported-operation]
 
   return mg_cycle_fn
 
@@ -304,7 +304,7 @@ def poisson_mg_cycle_fn(  # pytype: disable=annotation-type-mismatch  # numpy-sc
     replicas: Optional[np.ndarray] = None,
     coordinates: Optional[TensorOrArray] = None,
     num_cycles: int = 1,
-    dtype: np.dtype = np.float32
+    dtype: np.dtype = np.float32  # pyrefly: ignore[bad-function-definition]
 ) -> Callable[[Tiles, Tiles], Tiles]:
   """Returns a Poisson `mg_cycle` function.
 
@@ -368,7 +368,7 @@ def poisson_mg_cycle_step_fn(  # pytype: disable=annotation-type-mismatch  # num
         halo_exchange_utils.BoundaryConditionsSpec] = None,
     use_a_inv: bool = True,
     num_cycles: int = 1,
-    dtype: np.dtype = np.float32
+    dtype: np.dtype = np.float32  # pyrefly: ignore[bad-function-definition]
 ) -> Callable[[multigrid_utils.ProlongRestrictMatrices,
                Union[int, tf.Tensor],
                Optional[np.ndarray],
@@ -388,7 +388,7 @@ def poisson_mg_cycle_step_fn(  # pytype: disable=annotation-type-mismatch  # num
               replica_id: Union[int, tf.Tensor] = 0,
               replicas: Optional[np.ndarray] = None,
               coordinates: Optional[TensorOrArray] = None):
-    homogeneous_smoother_fn = homogeneous_smoother_step_fn(replica_id, replicas)
+    homogeneous_smoother_fn = homogeneous_smoother_step_fn(replica_id, replicas)  # pyrefly: ignore[bad-argument-type]
 
     return poisson_mg_cycle_fn(
         params, prs, boundary_conditions, homogeneous_smoother_fn,

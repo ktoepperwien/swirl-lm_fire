@@ -168,13 +168,13 @@ def partial_mesh_for_core(
 
   if pad_mode == 'PHYSICAL':
     xs = common_ops.get_local_slice_of_1d_array(
-        params.global_xyz_with_halos[0], coordinate[0], core_nx, nx
+        params.global_xyz_with_halos[0], coordinate[0], core_nx, nx  # pyrefly: ignore[bad-argument-type]
     )
     ys = common_ops.get_local_slice_of_1d_array(
-        params.global_xyz_with_halos[1], coordinate[1], core_ny, ny
+        params.global_xyz_with_halos[1], coordinate[1], core_ny, ny  # pyrefly: ignore[bad-argument-type]
     )
     zs = common_ops.get_local_slice_of_1d_array(
-        params.global_xyz_with_halos[2], coordinate[2], core_nz, nz
+        params.global_xyz_with_halos[2], coordinate[2], core_nz, nz  # pyrefly: ignore[bad-argument-type]
     )
   else:
     xs = get_slice_in_dim(core_nx, lx, cx, gx, params.x)
@@ -346,7 +346,7 @@ def subgrid_slice(
     The subgrid slice corresponding to the given subgrid coordinate (including
     halo).
   """
-  start, end = subgrid_slice_indices(subgrid_size, coordinate, halo_width)
+  start, end = subgrid_slice_indices(subgrid_size, coordinate, halo_width)  # pyrefly: ignore[bad-argument-type]
 
   return slice(start, end)
 
@@ -365,9 +365,9 @@ def three_d_subgrid_slices(
   Returns:
     The subgrid slices corresponding to the given subgrid coordinates.
   """
-  return tuple([
+  return tuple([  # pyrefly: ignore[bad-return]
       subgrid_slice(ss, c, halo_width)
-      for ss, c in zip(subgrid_size, coordinates)
+      for ss, c in zip(subgrid_size, coordinates)  # pyrefly: ignore[bad-argument-type]
   ])
 
 
@@ -421,7 +421,7 @@ def subgrid_of_3d_tensor(full_3d_grid: tf.Tensor,
                          coordinates: ThreeIntTuple,
                          halo_width: Optional[int] = 1) -> tf.Tensor:
   """Similar to `subgrid_of_3d_grid`, but for a tensor."""
-  core_subgrid_shape = np.array([s - 2 * halo_width for s in subgrid_shape])
+  core_subgrid_shape = np.array([s - 2 * halo_width for s in subgrid_shape])  # pyrefly: ignore[unsupported-operation]
   begin = core_subgrid_shape * coordinates
 
   return tf.slice(full_3d_grid, begin, subgrid_shape)
@@ -448,11 +448,11 @@ def subgrid_of_2d_grid(full_2d_grid: TensorOrArray,
   core_nx, core_ny = params.core_nx, params.core_ny
   halo_width = params.halo_width
 
-  nx_start = cxi * core_nx
-  x_slice = slice(nx_start, nx_start + core_nx + 2 * halo_width)
+  nx_start = cxi * core_nx  # pyrefly: ignore[unsupported-operation]
+  x_slice = slice(nx_start, nx_start + core_nx + 2 * halo_width)  # pyrefly: ignore[unsupported-operation]
 
-  ny_start = cyi * core_ny
-  y_slice = slice(ny_start, ny_start + core_ny + 2 * halo_width)
+  ny_start = cyi * core_ny  # pyrefly: ignore[unsupported-operation]
+  y_slice = slice(ny_start, ny_start + core_ny + 2 * halo_width)  # pyrefly: ignore[unsupported-operation]
 
   return full_2d_grid[x_slice, y_slice]
 
@@ -465,7 +465,7 @@ def three_d_subgrid_of_2d_grid(
   sub_grid = subgrid_of_2d_grid(full_2d_grid, params, coordinates)
   expand_dims = (
       tf.expand_dims if isinstance(full_2d_grid, tf.Tensor) else np.expand_dims)
-  return expand_dims(sub_grid, axis=0)
+  return expand_dims(sub_grid, axis=0)  # pyrefly: ignore[no-matching-overload]
 
 
 def three_d_subgrid_of_2d_border_strip(
@@ -501,13 +501,13 @@ def three_d_subgrid_of_2d_border_strip(
   if strip_width == fx:
     x_slice = slice(None)
   else:
-    nx_start = cxi * core_nx
+    nx_start = cxi * core_nx  # pyrefly: ignore[unsupported-operation]
     x_slice = slice(nx_start, nx_start + params.nx)
 
   if strip_width == fy:
     y_slice = slice(None)
   else:
-    ny_start = cyi * core_ny
+    ny_start = cyi * core_ny  # pyrefly: ignore[unsupported-operation]
     y_slice = slice(ny_start, ny_start + params.ny)
   return np.expand_dims(border_strip[x_slice, y_slice], axis=0)
 
@@ -529,5 +529,5 @@ def gen_partial_from_full_2d(field_2d: np.ndarray,
   Returns:
     The requested subgrid, as a 3d numpy array.
   """
-  return np.expand_dims(
+  return np.expand_dims(  # pyrefly: ignore[no-matching-overload]
       subgrid_of_2d_grid(field_2d, params, coordinates), axis=0)

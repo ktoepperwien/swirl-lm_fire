@@ -383,7 +383,7 @@ class Scalars(object):
       helper_states = {'diffusivity': diffusivity}
       helper_states.update(additional_states)
       scalar_rhs_fn = self._scalar_update(
-          replica_id, replicas, sc_name, states_mid, helper_states
+          replica_id, replicas, sc_name, states_mid, helper_states  # pyrefly: ignore[bad-argument-type]
       )
 
       @tf.function
@@ -429,16 +429,16 @@ class Scalars(object):
       if self._dbg is not None:
         terms = (
             self._scalar_update(replica_id, replicas, sc_name, states_mid,
-                                helper_states, True)(sc_mid))
+                                helper_states, True)(sc_mid))  # pyrefly: ignore[bad-argument-type]
         updated_scalars.update(
-            self._dbg.update_scalar_terms(sc_name, terms, diffusivity))
+            self._dbg.update_scalar_terms(sc_name, terms, diffusivity))  # pyrefly: ignore[bad-argument-type]
 
     # Applies the marker-and-cell or Cartesian grid method if requested in the
     # config file.
     if self._ib is not None:
       updated_scalars = self._ib.update_states(self._kernel_op, replica_id,
                                                replicas, updated_scalars,
-                                               additional_states, self._bc)
+                                               additional_states, self._bc)  # pyrefly: ignore[bad-argument-type]
 
     return updated_scalars, mass_source  # pytype: disable=bad-return-type
 
@@ -483,7 +483,7 @@ class Scalars(object):
       if self._ib is not None:
         sc_buf = self._ib.update_states(self._kernel_op, replica_id, replicas,
                                         {sc_name: sc_buf}, additional_states,
-                                        self._bc)[sc_name]
+                                        self._bc)[sc_name]  # pyrefly: ignore[bad-argument-type]
 
       scalars.update({sc_name: exchange_halos(sc_buf, sc_name)})
 

@@ -84,7 +84,7 @@ class LookupGasOpticsLongwave(gas_base.AbstractLookupGasOptics):
     return data
 
   @classmethod
-  def from_nc_file(cls, path: str) -> 'LookupGasOpticsLongwave':
+  def from_nc_file(cls, path: str) -> 'LookupGasOpticsLongwave':  # pyrefly: ignore[bad-override]
     """Instantiates a `LookupGasOpticsLongwave` object from zipped netCDF file.
 
     The compressed file should be netCDF parsable and contain the RRTMGP

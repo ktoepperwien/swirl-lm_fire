@@ -61,12 +61,12 @@ def find_bc_type(
 
   def is_non_slip_wall(dim: int, face: int):
     """Checks if the boundary is a non-slip wall."""
-    return ((bc['u'][dim][face][0] == halo_exchange.BCType.DIRICHLET and
-             bc['u'][dim][face][1] == 0.0) and
-            (bc['v'][dim][face][0] == halo_exchange.BCType.DIRICHLET and
-             bc['v'][dim][face][1] == 0.0) and
-            (bc['w'][dim][face][0] == halo_exchange.BCType.DIRICHLET and
-             bc['w'][dim][face][1] == 0.0))
+    return ((bc['u'][dim][face][0] == halo_exchange.BCType.DIRICHLET and  # pyrefly: ignore[unsupported-operation]
+             bc['u'][dim][face][1] == 0.0) and  # pyrefly: ignore[unsupported-operation]
+            (bc['v'][dim][face][0] == halo_exchange.BCType.DIRICHLET and  # pyrefly: ignore[unsupported-operation]
+             bc['v'][dim][face][1] == 0.0) and  # pyrefly: ignore[unsupported-operation]
+            (bc['w'][dim][face][0] == halo_exchange.BCType.DIRICHLET and  # pyrefly: ignore[unsupported-operation]
+             bc['w'][dim][face][1] == 0.0))  # pyrefly: ignore[unsupported-operation]
 
   def is_slip_wall(dim: int, face: int):
     """Checks if the boundary is a free-slip wall."""
@@ -74,17 +74,17 @@ def find_bc_type(
 
     # The velocity component normal to the wall should be 0 to have no
     # penetration.
-    if (bc[wall_normal_velocity][dim][face][0] != halo_exchange.BCType.DIRICHLET
-        or bc[wall_normal_velocity][dim][face][1] != 0.0):
+    if (bc[wall_normal_velocity][dim][face][0] != halo_exchange.BCType.DIRICHLET  # pyrefly: ignore[unsupported-operation]
+        or bc[wall_normal_velocity][dim][face][1] != 0.0):  # pyrefly: ignore[unsupported-operation]
       return False
 
     for velocity in ['u', 'v', 'w']:
       if velocity == wall_normal_velocity:
         continue
       # Zero shear needs to be applied at a slip wall.
-      if (bc[velocity][dim][face][0] not in (
+      if (bc[velocity][dim][face][0] not in (  # pyrefly: ignore[unsupported-operation]
           halo_exchange.BCType.NEUMANN, halo_exchange.BCType.NEUMANN_2) or
-          bc[velocity][dim][face][1] != 0.0):
+          bc[velocity][dim][face][1] != 0.0):  # pyrefly: ignore[unsupported-operation]
         return False
 
     return True
@@ -95,8 +95,8 @@ def find_bc_type(
 
     # The velocity component normal to the wall should be 0 to have no
     # penetration.
-    if bc[wall_normal_velocity][dim][face][
-        0] != halo_exchange.BCType.DIRICHLET or bc[wall_normal_velocity][dim][
+    if bc[wall_normal_velocity][dim][face][  # pyrefly: ignore[unsupported-operation]
+        0] != halo_exchange.BCType.DIRICHLET or bc[wall_normal_velocity][dim][  # pyrefly: ignore[unsupported-operation]
             face][1] != 0.0:
       return False
 
@@ -106,11 +106,11 @@ def find_bc_type(
       if velocity == wall_normal_velocity:
         continue
       # Zero shear needs to be applied at a slip wall.
-      if bc[velocity][dim][face][0] not in (
+      if bc[velocity][dim][face][0] not in (  # pyrefly: ignore[unsupported-operation]
           halo_exchange.BCType.NEUMANN, halo_exchange.BCType.NEUMANN_2):
         return False
 
-      if bc[velocity][dim][face][1] != 0.0:
+      if bc[velocity][dim][face][1] != 0.0:  # pyrefly: ignore[unsupported-operation]
         non_zero_shear = True
 
     return non_zero_shear
@@ -120,16 +120,16 @@ def find_bc_type(
     mainstream = velocity_var(dim)
 
     for velocity in ['u', 'v', 'w']:
-      bc_local = bc[velocity][dim][face]
+      bc_local = bc[velocity][dim][face]  # pyrefly: ignore[unsupported-operation]
       if velocity == mainstream:
         # The mainstream velocity in the inflow has to be specified as a
         # non-zero Dirichlet boundary condition.
-        if bc_local[0] != halo_exchange.BCType.DIRICHLET or bc_local[1] == 0.0:
+        if bc_local[0] != halo_exchange.BCType.DIRICHLET or bc_local[1] == 0.0:  # pyrefly: ignore[unsupported-operation]
           return False
       else:
         # The tangential velocity components in the inflow have to be specified
         # as Dirichlet boundary condition with arbitrary values.
-        if bc_local[0] != halo_exchange.BCType.DIRICHLET:
+        if bc_local[0] != halo_exchange.BCType.DIRICHLET:  # pyrefly: ignore[unsupported-operation]
           return False
 
     return True
@@ -141,36 +141,36 @@ def find_bc_type(
 
     # Here we only consider the case in which the outflow is specified by an
     # all-Neumann boundary condition.
-    return (bc['u'][dim][face][0] in (halo_exchange.BCType.NEUMANN,
+    return (bc['u'][dim][face][0] in (halo_exchange.BCType.NEUMANN,  # pyrefly: ignore[unsupported-operation]
                                       halo_exchange.BCType.NEUMANN_2,
                                       halo_exchange.BCType.NONREFLECTING) and
-            bc['v'][dim][face][0] in (halo_exchange.BCType.NEUMANN,
+            bc['v'][dim][face][0] in (halo_exchange.BCType.NEUMANN,  # pyrefly: ignore[unsupported-operation]
                                       halo_exchange.BCType.NEUMANN_2,
                                       halo_exchange.BCType.NONREFLECTING) and
-            bc['w'][dim][face][0] in (halo_exchange.BCType.NEUMANN,
+            bc['w'][dim][face][0] in (halo_exchange.BCType.NEUMANN,  # pyrefly: ignore[unsupported-operation]
                                       halo_exchange.BCType.NEUMANN_2,
                                       halo_exchange.BCType.NONREFLECTING))
 
   for dim in range(3):
     if periodic_dims[dim]:
-      bc_type[dim] = [BoundaryType.PERIODIC, BoundaryType.PERIODIC]
+      bc_type[dim] = [BoundaryType.PERIODIC, BoundaryType.PERIODIC]  # pyrefly: ignore[unsupported-operation]
       continue
 
     for face in range(2):
       if is_non_slip_wall(dim, face):
-        bc_type[dim][face] = BoundaryType.NON_SLIP_WALL
+        bc_type[dim][face] = BoundaryType.NON_SLIP_WALL  # pyrefly: ignore[unsupported-operation]
       elif is_slip_wall(dim, face):
-        bc_type[dim][face] = BoundaryType.SLIP_WALL
+        bc_type[dim][face] = BoundaryType.SLIP_WALL  # pyrefly: ignore[unsupported-operation]
       elif is_shear_wall(dim, face):
-        bc_type[dim][face] = BoundaryType.SHEAR_WALL
+        bc_type[dim][face] = BoundaryType.SHEAR_WALL  # pyrefly: ignore[unsupported-operation]
       elif is_inflow(dim, face):
-        bc_type[dim][face] = BoundaryType.INFLOW
+        bc_type[dim][face] = BoundaryType.INFLOW  # pyrefly: ignore[unsupported-operation]
       elif is_outflow(dim, face):
-        bc_type[dim][face] = BoundaryType.OUTFLOW
+        bc_type[dim][face] = BoundaryType.OUTFLOW  # pyrefly: ignore[unsupported-operation]
       else:
-        bc_type[dim][face] = BoundaryType.UNKNOWN
+        bc_type[dim][face] = BoundaryType.UNKNOWN  # pyrefly: ignore[unsupported-operation]
 
-  return bc_type
+  return bc_type  # pyrefly: ignore[bad-return]
 
 
 def dirichlet_ghost_cell_quick(
@@ -222,33 +222,33 @@ def dirichlet_ghost_cell_quick(
     bc_values_new = [[None, None], [None, None], [None, None]]
     for dim in range(3):
       for face in range(2):
-        if (bc_values[dim][face] is None or
-            bc_values[dim][face][0] != halo_exchange.BCType.DIRICHLET or
+        if (bc_values[dim][face] is None or  # pyrefly: ignore[unsupported-operation]
+            bc_values[dim][face][0] != halo_exchange.BCType.DIRICHLET or  # pyrefly: ignore[unsupported-operation]
             bc_type[dim][face] == BoundaryType.INFLOW):
-          bc_values_new[dim][face] = bc_values[dim][face]
+          bc_values_new[dim][face] = bc_values[dim][face]  # pyrefly: ignore[unsupported-operation]
         else:
           fluid_cell = common_ops.get_face(states[varname], dim, face,
                                            halo_width)[0]
-          if isinstance(bc_values[dim][face][1], float):
-            boundary_val = bc_values[dim][face][1]
+          if isinstance(bc_values[dim][face][1], float):  # pyrefly: ignore[unsupported-operation]
+            boundary_val = bc_values[dim][face][1]  # pyrefly: ignore[unsupported-operation]
             constant_like = functools.partial(
                 (lambda val, x: tf.fill(x.shape, val)), boundary_val)
             boundary_cell = tf.nest.map_structure(constant_like, fluid_cell)
-          elif isinstance(bc_values[dim][face][1], abc.Sequence):
-            if len(bc_values[dim][face][1]) < halo_width:
+          elif isinstance(bc_values[dim][face][1], abc.Sequence):  # pyrefly: ignore[unsupported-operation]
+            if len(bc_values[dim][face][1]) < halo_width:  # pyrefly: ignore[bad-argument-type, unsupported-operation]
               raise ValueError(
                   'Insufficient slices provided as boundary condition. At least'
                   ' {} is required but {} is provided.'
-                  .format(halo_width, len(bc_values[dim][face][1])))
+                  .format(halo_width, len(bc_values[dim][face][1])))  # pyrefly: ignore[bad-argument-type, unsupported-operation]
             boundary_cell = (
-                bc_values[dim][face][1][halo_width - 1]
-                if face == 0 else bc_values[dim][face][1][-halo_width])
-          ghost_cell = tf.nest.map_structure(ghost_cell_fn, boundary_cell,
+                bc_values[dim][face][1][halo_width - 1]  # pyrefly: ignore[bad-index, unsupported-operation]
+                if face == 0 else bc_values[dim][face][1][-halo_width])  # pyrefly: ignore[bad-index, unsupported-operation]
+          ghost_cell = tf.nest.map_structure(ghost_cell_fn, boundary_cell,  # pyrefly: ignore[unbound-name]
                                              fluid_cell)
           bc_val = [ghost_cell, boundary_cell
                    ] if face == 0 else [boundary_cell, ghost_cell]
 
-          bc_values_new[dim][face] = (halo_exchange.BCType.DIRICHLET, bc_val)
+          bc_values_new[dim][face] = (halo_exchange.BCType.DIRICHLET, bc_val)  # pyrefly: ignore[unsupported-operation]
     bc_new.update({varname: bc_values_new})
 
   return bc_new
@@ -274,9 +274,9 @@ def get_keys_for_boundary_condition(
       continue
     for dim in range(3):
       for face in range(2):
-        if v[dim][face] is None:
+        if v[dim][face] is None:  # pyrefly: ignore[unsupported-operation]
           continue
-        if v[dim][face][0] == bc_type:
+        if v[dim][face][0] == bc_type:  # pyrefly: ignore[unsupported-operation]
           additional_state_key_for_bc = bc_manager.generate_bc_key(
               k, dim, face)
           logging.info(

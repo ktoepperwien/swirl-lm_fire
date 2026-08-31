@@ -126,7 +126,7 @@ class GridExtension:
     )
     return GridParametrization.create_from_grid_lengths_and_etc(
         new_grid_lengths,
-        self.params.computation_shape,
+        self.params.computation_shape,  # pyrefly: ignore[bad-argument-type]
         (self.params.nx, self.params.ny, self.params.nz),
         self.params.halo_width,
     )

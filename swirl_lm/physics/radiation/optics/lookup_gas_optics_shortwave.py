@@ -79,7 +79,7 @@ class LookupGasOpticsShortwave(gas_base.AbstractLookupGasOptics):
     return data
 
   @classmethod
-  def from_nc_file(
+  def from_nc_file(  # pyrefly: ignore[bad-override]
       cls, path: str
   ) -> 'LookupGasOpticsShortwave':
     """Instantiates a `LookupGasOpticsShortwave` object from zipped netCDF file.

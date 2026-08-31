@@ -129,7 +129,7 @@ def _bound_scalar(
       phi_i = tf.minimum(phi_i, maxval * tf.ones_like(phi_i, dtype=_TF_DTYPE))
     return phi_i
 
-  return apply_bound(phi) if isinstance(
+  return apply_bound(phi) if isinstance(  # pyrefly: ignore[bad-return]
       phi, tf.Tensor) else [apply_bound(phi_i) for phi_i in phi]
 
 
@@ -190,18 +190,18 @@ def _reaction_rate(
 
   def sigma_cm():
     """Computes the turbulent diffusivity sigma_cm = 0.09 ϱg sB √K."""
-    return 0.09 * rho_g * s_b * tf.math.sqrt(tke)
+    return 0.09 * rho_g * s_b * tf.math.sqrt(tke)  # pyrefly: ignore[unsupported-operation]
 
   def psi_s():
     """Computes the ignited volume fraction."""
     return tf.clip_by_value(
-        (temperature - t_0_ivf) / (t_1_ivf - t_0_ivf), 0.0, 1.0
+        (temperature - t_0_ivf) / (t_1_ivf - t_0_ivf), 0.0, 1.0  # pyrefly: ignore[unsupported-operation]
     )
 
   def lambda_of():
     """Computes 𝛌of = ϱf ϱo / (ϱf / Nf + ϱo / No)2."""
     return tf.math.divide_no_nan(
-        rho_f * rho_g * y_o, (rho_f / _N_F + rho_g * y_o / _N_O) ** 2
+        rho_f * rho_g * y_o, (rho_f / _N_F + rho_g * y_o / _N_O) ** 2  # pyrefly: ignore[unsupported-operation]
     )
 
   rho_f = _bound_scalar(rho_f, minval=0.0)
@@ -218,7 +218,7 @@ def _reaction_rate(
     )
 
   src = (
-      c_f
+      c_f  # pyrefly: ignore[unsupported-operation]
       * rho_f
       * rho_g
       * y_o
@@ -260,7 +260,7 @@ def _radiative_emission(
     the radiation term is 0, i.e., radiation energy can only be lost to
     ambient conditions.
   """
-  return tf.maximum(_SIGMA * k / l * (t**4 - t_ambient**4), 0.0)
+  return tf.maximum(_SIGMA * k / l * (t**4 - t_ambient**4), 0.0)  # pyrefly: ignore[unsupported-operation]
 
 
 def _evaporation(
@@ -285,8 +285,8 @@ def _evaporation(
     fuel, in units of kg/m^3/s, and its second element being the updated
     moisture CDF.
   """
-  phi = tf.minimum(tf.maximum((t - 310.0) / 126.0, 0.0), 1.0)
-  return (c_w * rho_m * tf.maximum(phi - phi_max, 0.0) / dt,
+  phi = tf.minimum(tf.maximum((t - 310.0) / 126.0, 0.0), 1.0)  # pyrefly: ignore[unsupported-operation]
+  return (c_w * rho_m * tf.maximum(phi - phi_max, 0.0) / dt,  # pyrefly: ignore[unsupported-operation]
           tf.maximum(phi, phi_max))
 
 
@@ -299,7 +299,7 @@ def _src_oxidizer(f_f: tf.Tensor) -> tf.Tensor:
   Returns:
     The rate of consumption of the oxidizer, in units of kg/m^3/s.
   """
-  return -_N_O * f_f
+  return -_N_O * f_f  # pyrefly: ignore[bad-return, unsupported-operation]
 
 
 def _src_fuel(f_f: tf.Tensor) -> tf.Tensor:
@@ -311,7 +311,7 @@ def _src_fuel(f_f: tf.Tensor) -> tf.Tensor:
   Returns:
     The rate of consumption of the fuel, in units of kg/m^3/s.
   """
-  return -_N_F * f_f
+  return -_N_F * f_f  # pyrefly: ignore[bad-return, unsupported-operation]
 
 
 def _theta(
@@ -550,13 +550,13 @@ class Wood(object):
       )
 
     q_rad = (
-        _radiative_emission(t_g, t_far_field, self.s_b, self.efficiency)
+        _radiative_emission(t_g, t_far_field, self.s_b, self.efficiency)  # pyrefly: ignore[bad-argument-type]
         if self.include_radiation
         else 0.0
     )
-    q_conv = _localize_by_fuel(rho_f, self.h_conv * self.a_v * (t_s - t_g))
-    q_comb = _localize_by_fuel(rho_f, (1.0 - theta) * f_f * self.h_f)
-    return (q_conv + q_comb - q_rad) / self.cp_g
+    q_conv = _localize_by_fuel(rho_f, self.h_conv * self.a_v * (t_s - t_g))  # pyrefly: ignore[unsupported-operation]
+    q_comb = _localize_by_fuel(rho_f, (1.0 - theta) * f_f * self.h_f)  # pyrefly: ignore[bad-argument-type, unsupported-operation]
+    return (q_conv + q_comb - q_rad) / self.cp_g  # pyrefly: ignore[unsupported-operation]
 
   def _src_t_s(
       self,
@@ -601,25 +601,25 @@ class Wood(object):
       )
 
     q_rad = (
-        _radiative_emission(t_s, t_far_field, self.s_b, self.efficiency)
+        _radiative_emission(t_s, t_far_field, self.s_b, self.efficiency)  # pyrefly: ignore[bad-argument-type]
         if self.include_radiation
         else 0.0
     )
-    q_conv = self.h_conv * self.a_v * (t_g - t_s)
-    q_comb = f_f * (theta * self.h_f - _CP_F * self.t_pyr * _N_F)
+    q_conv = self.h_conv * self.a_v * (t_g - t_s)  # pyrefly: ignore[unsupported-operation]
+    q_comb = f_f * (theta * self.h_f - _CP_F * self.t_pyr * _N_F)  # pyrefly: ignore[unsupported-operation]
     rhs = _localize_by_fuel(rho_f, q_conv + q_comb - q_rad)
 
     if (f_w is not None and
         self.model_params.WhichOneof('combustion_model_option')
         == 'moist_wood'):
-      rhs -= f_w * (
+      rhs -= f_w * (  # pyrefly: ignore[unsupported-operation]
           self.model_params.moist_wood.h_w +
           _CP_W * self.model_params.moist_wood.t_vap)
 
-      cp = _CP_F * _bound_scalar(rho_f, minval=0.0)
+      cp = _CP_F * _bound_scalar(rho_f, minval=0.0)  # pyrefly: ignore[unsupported-operation]
 
       if rho_m is not None:
-        cp += _CP_W * _bound_scalar(rho_m, minval=0.0)
+        cp += _CP_W * _bound_scalar(rho_m, minval=0.0)  # pyrefly: ignore[unsupported-operation]
     else:
       cp = _CP_F
 
@@ -1164,7 +1164,7 @@ class Wood(object):
           # Note that the molecular weight of CO2 and H2O are 44 and 18,
           # respectively.
           w_tot = 6 * 44.0 + 5 * 18.0
-          f_w_comb = 5 * 18.0 / w_tot * src_p
+          f_w_comb = 5 * 18.0 / w_tot * src_p  # pyrefly: ignore[unsupported-operation]
           new_value = tf.nest.map_structure(tf.math.add, f_w_comb, f_w_mid)
 
         if new_value is not None:

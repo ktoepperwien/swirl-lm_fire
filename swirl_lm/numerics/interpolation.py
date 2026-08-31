@@ -168,7 +168,7 @@ def _calculate_weno_weights(
     ]
 
   # Compute the WENO weights.
-  w_neg_sum = tf.nest.map_structure(tf.zeros_like, beta[0])
+  w_neg_sum = tf.nest.map_structure(tf.zeros_like, beta[0])  # pyrefly: ignore[unbound-name]
   w_pos_sum = tf.nest.map_structure(tf.zeros_like, beta[0])
 
   alpha_fn = lambda beta, dr: dr / (eps + beta) ** 2
@@ -480,10 +480,10 @@ def trilinear_interpolation(
     The output shape is a vector of length `n` for a 3-D `field_data` and tensor
     of shape `(n, m)` for 4-D `field_data`, respectively.
   """
-  with tf.name_scope('preparing_trilinear_interpolation'):
-    points_norm = (points - local_grid_min_pt) / grid_spacing
+  with tf.name_scope('preparing_trilinear_interpolation'):  # pyrefly: ignore[bad-instantiation]
+    points_norm = (points - local_grid_min_pt) / grid_spacing  # pyrefly: ignore[unsupported-operation]
     ijk_unclipped = tf.floor(points_norm)
-    with tf.name_scope('preventing_error_for_out_of_bounds_indexing'):
+    with tf.name_scope('preventing_error_for_out_of_bounds_indexing'):  # pyrefly: ignore[bad-instantiation]
       ijk = tf.clip_by_value(
           ijk_unclipped,
           0.0,
@@ -497,7 +497,7 @@ def trilinear_interpolation(
     i, j, k = ijk[:, 0], ijk[:, 1], ijk[:, 2]
     x0, x1, x2 = points_norm[:, 0], points_norm[:, 1], points_norm[:, 2]
 
-  with tf.name_scope('indexing_field_data_for_interpolation'):
+  with tf.name_scope('indexing_field_data_for_interpolation'):  # pyrefly: ignore[bad-instantiation]
     v = tf.stack(
         [
             tf.gather_nd(field_data, tf.stack([i + p, j + q, k + l], axis=-1))
@@ -506,7 +506,7 @@ def trilinear_interpolation(
         axis=-1,
     )
 
-  with tf.name_scope('calculating_interpolation_weights'):
+  with tf.name_scope('calculating_interpolation_weights'):  # pyrefly: ignore[bad-instantiation]
     w = tf.stack(
         [
             ((1 - p) + (2 * p - 1) * x0)
@@ -517,10 +517,10 @@ def trilinear_interpolation(
         axis=-1,
     )
 
-  with tf.name_scope('applying_interpolation_weights'):
+  with tf.name_scope('applying_interpolation_weights'):  # pyrefly: ignore[bad-instantiation]
     vals = tf.einsum('i...k,ik->i...', v, w)
 
-  with tf.name_scope('filling_extrapolating_values'):
+  with tf.name_scope('filling_extrapolating_values'):  # pyrefly: ignore[bad-instantiation]
     out_of_bounds_locs = tf.math.reduce_any(
         tf.math.logical_or(
             tf.math.less(ijk_unclipped, 0),

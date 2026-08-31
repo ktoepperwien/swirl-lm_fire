@@ -221,7 +221,8 @@ SHIFTS = {
 
 
 def _validate_offset_and_stencil(
-    offset: int | None, stencil: list[float]
+    offset: int | None,
+    stencil: list[float] | tuple[float, ...] | np.ndarray | jax.Array,
 ) -> int:
   """Checks that offset is a valid index of the stencil.
 
@@ -245,9 +246,82 @@ def _validate_offset_and_stencil(
   return offset
 
 
+def _make_banded_matrix_np(
+    stencil: list[float] | tuple[float, ...] | np.ndarray,
+    banded_matrix_size: int,
+    offset: int | None = None,
+) -> np.ndarray:
+  """Creates a banded matrix using NumPy."""
+  offset = _validate_offset_and_stencil(offset, stencil)
+  stencil_arr = np.asarray(stencil, dtype=np.float32)
+  matrix = np.zeros(
+      (banded_matrix_size, banded_matrix_size + 2 * len(stencil_arr)),
+      dtype=np.float32,
+  )
+  for ir in range(banded_matrix_size):
+    matrix[ir, ir + len(stencil_arr) : ir + 2 * len(stencil_arr)] = stencil_arr
+  matrix = np.roll(matrix, -offset, axis=1)
+  return matrix[:, len(stencil_arr) : len(stencil_arr) + banded_matrix_size]
+
+
+def _make_convop_kernel_np(
+    stencil: list[float] | tuple[float, ...] | np.ndarray,
+    kernel_size: int,
+    offset: int | None = None,
+) -> np.ndarray:
+  """Creates a convolutional finite-difference operator using NumPy."""
+  offset = _validate_offset_and_stencil(offset, stencil)
+
+  left_width = offset
+  right_width = len(stencil) - offset - 1
+  reversed_stencil = list(reversed(stencil))
+
+  if left_width > 0:
+    upper_triangle = np.concatenate([
+        np.zeros([kernel_size - left_width, kernel_size], dtype=np.float32),
+        np.concatenate(
+            [
+                _make_banded_matrix_np(
+                    reversed_stencil, left_width, len(stencil) - 1
+                ),
+                np.zeros(
+                    [left_width, kernel_size - left_width], dtype=np.float32
+                ),
+            ],
+            axis=1,
+        ),
+    ])
+  else:
+    upper_triangle = np.zeros([kernel_size, kernel_size], dtype=np.float32)
+
+  if right_width > 0:
+    lower_triangle = np.concatenate([
+        np.concatenate(
+            [
+                np.zeros(
+                    [right_width, kernel_size - right_width], dtype=np.float32
+                ),
+                _make_banded_matrix_np(reversed_stencil, right_width, 0),
+            ],
+            axis=1,
+        ),
+        np.zeros([kernel_size - right_width, kernel_size], dtype=np.float32),
+    ])
+  else:
+    lower_triangle = np.zeros([kernel_size, kernel_size], dtype=np.float32)
+
+  return np.stack([
+      upper_triangle,
+      _make_banded_matrix_np(reversed_stencil, kernel_size, right_width),
+      lower_triangle,
+  ])
+
+
 def _make_banded_matrix(
-    stencil: list[float], banded_matrix_size: int, offset: int | None = None
-) -> jax.Array:
+    stencil: list[float] | tuple[float, ...] | np.ndarray | jax.Array,
+    banded_matrix_size: int,
+    offset: int | None = None,
+) -> ConvKernelType:
   """Creates a banded matrix.
 
   The band diagonal elements are populated with the `stencil`.
@@ -264,12 +338,14 @@ def _make_banded_matrix(
     (banded_matrix_size, banded_matrix_size).
   """
   offset = _validate_offset_and_stencil(offset, stencil)
-  stencil = jnp.array(stencil, dtype=DType)
+  if not isinstance(stencil, (jax.Array, jax.core.Tracer)):
+    return _make_banded_matrix_np(stencil, banded_matrix_size, offset)
+  stencil = jnp.array(stencil, dtype=DType)  # pyrefly: ignore[bad-assignment]
   rows = jnp.arange(banded_matrix_size, dtype=jnp.int32)
   rows = jnp.tile(jnp.expand_dims(rows, axis=-1), (1, len(stencil)))
   cols = [jnp.arange(ir, ir + len(stencil)) for ir in range(banded_matrix_size)]
   cols = jnp.stack(cols, axis=0) + len(stencil)
-  vals = jnp.tile(stencil, (banded_matrix_size, 1))
+  vals = jnp.tile(stencil, (banded_matrix_size, 1))  # pyrefly: ignore[bad-argument-type]
   matrix = jnp.zeros(
       (banded_matrix_size, banded_matrix_size + 2 * len(stencil))
   )
@@ -281,10 +357,10 @@ def _make_banded_matrix(
 
 
 def _make_backward_banded_matrix(
-    stencil: list[float],
+    stencil: list[float] | tuple[float, ...] | np.ndarray | jax.Array,
     banded_matrix_size: int,
     offset: int | None = None,
-) -> jax.Array:
+) -> ConvKernelType:
   """Generates a banded matrix kernel with `stencil` as weights.
 
   The stencil will be biased backward if the length of stencil is even.
@@ -305,8 +381,10 @@ def _make_backward_banded_matrix(
 
 
 def _make_convop_kernel(
-    stencil: list[float], kernel_size: int, offset: int | None = None
-) -> jax.Array:
+    stencil: list[float] | tuple[float, ...] | np.ndarray | jax.Array,
+    kernel_size: int,
+    offset: int | None = None,
+) -> ConvKernelType:
   """Creates a convolutional finite-difference operator.
 
   Args:
@@ -323,6 +401,8 @@ def _make_convop_kernel(
     A convolutional finite difference operator.
   """
   offset = _validate_offset_and_stencil(offset, stencil)
+  if not isinstance(stencil, (jax.Array, jax.core.Tracer)):
+    return _make_convop_kernel_np(stencil, kernel_size, offset)
 
   left_width = offset
   right_width = len(stencil) - offset - 1
@@ -377,10 +457,22 @@ def _add_customized_conv_kernel(
 
   for kernel_name, stencil in custom_kernel_lib.items():
     if kernel_name in kernel_dict:
-      assert kernel_dict[kernel_name] == stencil[0], (
-          f'Kernel {kernel_name} already defined with values'
-          f' {kernel_dict[kernel_name]}. Redefining it with'
-          f' {stencil[0]} is not allowed.'
+      # If existing kernel has the same weights, skip silently (JIT-safe).
+      # If weights differ, raise an error.
+      existing = kernel_dict[kernel_name]
+      is_same = np.array_equal(
+          np.asarray(existing), np.asarray(stencil[0])  # pyrefly: ignore[bad-index]
+      )
+      if not is_same and kernel_generation_fn is not None:
+        new_kernel = kernel_generation_fn(
+            stencil[0], kernel_size, stencil[1]  # pyrefly: ignore[bad-argument-type, bad-index]
+        )
+        is_same = np.array_equal(np.asarray(existing), np.asarray(new_kernel))
+      if is_same:
+        continue
+
+      raise AssertionError(
+          f'Kernel `{kernel_name}` is already defined with different weights.'
       )
 
     assert kernel_generation_fn is not None, (
@@ -389,7 +481,7 @@ def _add_customized_conv_kernel(
     )
 
     kernel_dict.update(
-        {kernel_name: kernel_generation_fn(stencil[0], kernel_size, stencil[1])}
+        {kernel_name: kernel_generation_fn(stencil[0], kernel_size, stencil[1])}  # pyrefly: ignore[bad-argument-type, bad-index]
     )
   return kernel_dict
 
@@ -470,9 +562,12 @@ def _convop_kernel_dict(
     jnp_kernels['kD4'] = _make_convop_kernel(
         COEFFS['centered_difference_1_order_4'], kernel_size
     )
+    jnp_kernels['k4d2'] = _make_convop_kernel(
+        COEFFS['centered_difference_4_order_2'], kernel_size
+    )
   if custom_kernel_dict:
     _add_customized_conv_kernel(
-        jnp_kernels,
+        jnp_kernels,  # pyrefly: ignore[bad-argument-type]
         custom_kernel_dict,
         kernel_size=kernel_size,
         kernel_generation_fn=_make_convop_kernel,
@@ -510,6 +605,16 @@ class ApplyKernelConvOp(ApplyKernelOp):
     self._kernel_size = kernel_size
     self._kernels = _convop_kernel_dict(kernel_size, custom_kernel_dict)
     self._grid_params = grid_params
+    # Slice kernels are used as a fallback when the array size along a given
+    # axis is not divisible by the kernel size (e.g., nz=20 with
+    # kernel_size=16). In TF, the z-dim was a list of 2D slices so convolution
+    # was only applied to x and y. In JAX, all 3 dims are arrays.
+    self._slice_kernels = _slice_kernel_dict(None)
+    if custom_kernel_dict:
+      for name, (coeffs, offset) in custom_kernel_dict.items():
+        if name not in self._slice_kernels:
+          shifts = [j - offset for j in range(len(coeffs))]  # pyrefly: ignore[unsupported-operation]
+          self._slice_kernels[name] = _discard_zero_coefficients(coeffs, shifts)  # pyrefly: ignore[bad-argument-type]
 
   def add_kernel(self, custom_kernel_dict: ExternalDictKernelType):
     """Adds a customized kernel to the kernel library."""
@@ -519,10 +624,25 @@ class ApplyKernelConvOp(ApplyKernelOp):
         kernel_size=self._kernel_size,
         kernel_generation_fn=_make_convop_kernel,
     )
+    # Also add the equivalent slice kernel for fallback. The external format
+    # is {name: (coefficients, offset)} which needs conversion to the slice
+    # format {name: {'coeff': ..., 'shift': ...}}.
+    for name, (coeffs, offset) in custom_kernel_dict.items():
+      if name not in self._slice_kernels:
+        shifts = [j - offset for j in range(len(coeffs))]  # pyrefly: ignore[unsupported-operation]
+        self._slice_kernels[name] = _discard_zero_coefficients(coeffs, shifts)  # pyrefly: ignore[bad-argument-type]
 
   def apply_kernel_op(
       self, array: ScalarField, name: str, axis: str
   ) -> ScalarField:
+    axis_index = self._grid_params.get_axis_index(axis)
+    if array.shape[axis_index] % self._kernel_size != 0:  # pyrefly: ignore[bad-index]
+      # Fall back to the slice-based approach when the array size is not
+      # divisible by the kernel size along this axis.
+      kernel = self._slice_kernels[name]
+      return common_ops.finite_diff_with_slice(
+          array, kernel['coeff'], kernel['shift'], axis, self._grid_params
+      )
     return common_ops.apply_convolutional_op(
         array,
         jnp.array(self._get_kernel(name), array.dtype),
@@ -643,6 +763,10 @@ def _slice_kernel_dict(
           COEFFS['centered_difference_1_order_4'],
           SHIFTS['centered_difference_1_order_4'],
       ),
+      'k4d2': _discard_zero_coefficients(
+          COEFFS['centered_difference_4_order_2'],
+          SHIFTS['centered_difference_4_order_2'],
+      ),
   }
   if custom_kernel_dict:
     _add_customized_slice_kernel(jnp_kernels, custom_kernel_dict)
@@ -678,7 +802,7 @@ class ApplyKernelSliceOp(ApplyKernelOp):
 
   def add_kernel(self, custom_kernel_dict: ExternalDictKernelType):
     """Adds a customized kernel to the kernel library."""
-    _add_customized_slice_kernel(self._kernels, custom_kernel_dict)
+    _add_customized_slice_kernel(self._kernels, custom_kernel_dict)  # pyrefly: ignore[bad-argument-type]
 
   def apply_kernel_op(
       self, array: ScalarField, name: str, axis: str
