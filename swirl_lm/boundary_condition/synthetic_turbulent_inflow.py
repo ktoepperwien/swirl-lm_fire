@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -421,7 +421,7 @@ class SyntheticTurbulentInflow(object):
           [additional_states[key] for key in self._rand_keys],
           [additional_states[key] for key in self._mean_keys],
           [additional_states[key] for key in self._rms_keys], replica_id,
-          replicas, seed)
+          replicas, seed)  # pyrefly: ignore[bad-argument-type]
 
       additional_states_updated = {}
       for key, value in additional_states.items():

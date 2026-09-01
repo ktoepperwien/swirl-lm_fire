@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -126,7 +126,7 @@ class GridExtension:
     )
     return GridParametrization.create_from_grid_lengths_and_etc(
         new_grid_lengths,
-        self.params.computation_shape,
+        self.params.computation_shape,  # pyrefly: ignore[bad-argument-type]
         (self.params.nx, self.params.ny, self.params.nz),
         self.params.halo_width,
     )

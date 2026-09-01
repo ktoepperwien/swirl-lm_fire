@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -267,7 +267,7 @@ class PotentialTemperature(scalar_generic.ScalarGeneric):
               ' `Cloud.source_by_radiation`.'
           )
         halos = [self._params.halo_width] * 3
-        f_r = self._cloud.source_by_radiation(
+        f_r = self._cloud.source_by_radiation(  # pyrefly: ignore[missing-attribute]
             thermo_states['q_l'],
             states['rho_thermal'],
             thermo_states['zz'],
@@ -335,7 +335,7 @@ class PotentialTemperature(scalar_generic.ScalarGeneric):
           states[common.KEY_RHO],
           thermo_states['zz'],
           theta_li,
-          self._g_dim,
+          self._g_dim,  # pyrefly: ignore[bad-argument-type]
           additional_states,
       )
       source = tf.nest.map_structure(tf.math.add, source, src_subsidence)
@@ -377,7 +377,7 @@ class PotentialTemperature(scalar_generic.ScalarGeneric):
       ) -> tf.Tensor:
         """Computes the condensation source term."""
         return (
-            rho * (self._thermodynamics.model.lh_v0 / cp) * (theta_0 / t_0) * s
+            rho * (self._thermodynamics.model.lh_v0 / cp) * (theta_0 / t_0) * s  # pyrefly: ignore[unsupported-operation]
         )
 
       return tf.nest.map_structure(

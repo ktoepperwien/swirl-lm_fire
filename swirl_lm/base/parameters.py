@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -173,7 +173,7 @@ def _get_gravity_direction(
   else:
     gravity_direction = [0.] * 3
 
-  return gravity_direction
+  return gravity_direction  # pyrefly: ignore[bad-return]
 
 
 class SwirlLMParameters(grid_parametrization.GridParametrization):
@@ -260,7 +260,7 @@ class SwirlLMParameters(grid_parametrization.GridParametrization):
       ), 'A turbulent combustion model is defined without a combustion model.'
     self.turbulent_combustion = (
         turbulent_combustion.turbulent_combustion_model_factory(
-            turbulent_combustion_params
+            turbulent_combustion_params  # pyrefly: ignore[bad-argument-type]
         )
     )
 
@@ -295,7 +295,7 @@ class SwirlLMParameters(grid_parametrization.GridParametrization):
         f' {g_dim} is provided.'
     )
     self.g_dim: Literal[0, 1, 2] | None = (
-        g_dim.item() if len(g_dim) == 1 else None
+        g_dim.item() if len(g_dim) == 1 else None  # pyrefly: ignore[bad-assignment]
     )
 
     # Get the scalar related quantities if scalars are solved as a
@@ -376,7 +376,7 @@ class SwirlLMParameters(grid_parametrization.GridParametrization):
     # Set the diffusion scheme to CENTRAL_3 if the Monin-Obukhov similarity
     # theory is used as the atmospheric-boundary layer closure.
     if self.boundary_models is not None:
-      if self.boundary_models.HasField('most'):
+      if self.boundary_models.HasField('most'):  # pyrefly: ignore[missing-attribute]
         if (self.diffusion_scheme !=
             numerics_pb2.DiffusionScheme.DIFFUSION_SCHEME_CENTRAL_3):
           raise ValueError(
@@ -419,7 +419,7 @@ class SwirlLMParameters(grid_parametrization.GridParametrization):
     inflow_velocity_name = ('u', 'v', 'w')[inflow_dim]
 
     return np.abs(
-        self.bc[inflow_velocity_name][inflow_dim][inflow_face][1]
+        self.bc[inflow_velocity_name][inflow_dim][inflow_face][1]  # pyrefly: ignore[unsupported-operation]
     )
 
   def _get_flow_through_time(self, inflow_dim: int, inflow_face: int) -> float:
@@ -579,10 +579,10 @@ class SwirlLMParameters(grid_parametrization.GridParametrization):
     bc_params = [[None, None], [None, None], [None, None]]
     for bc_info in boundary_conditions:
       (
-          bc[bc_info.dim][bc_info.location],
-          bc_params[bc_info.dim][bc_info.location],
+          bc[bc_info.dim][bc_info.location],  # pyrefly: ignore[unsupported-operation]
+          bc_params[bc_info.dim][bc_info.location],  # pyrefly: ignore[unsupported-operation]
       ) = self._parse_boundary_info(bc_info)
-    return bc, bc_params
+    return bc, bc_params  # pyrefly: ignore[bad-return]
 
   @classmethod
   def config_from_text_proto(
@@ -755,7 +755,7 @@ class SwirlLMParameters(grid_parametrization.GridParametrization):
   @source_update_fn_lib.setter
   def source_update_fn_lib(self, source_lib: SourceUpdateFnLib):
     """Sets the library of functions that updates the source termss."""
-    self._source_update_fn_lib = source_lib
+    self._source_update_fn_lib = source_lib  # pyrefly: ignore[bad-assignment]
 
   def source_update_fn(self, varname: str):
     """Retrieves the source term update function for `varname` if available.

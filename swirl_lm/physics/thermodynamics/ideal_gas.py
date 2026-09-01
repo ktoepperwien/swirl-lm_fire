@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -87,7 +87,7 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
     Returns:
       The density, in units of kg/m^3.
     """
-    return p / r / t
+    return p / r / t  # pyrefly: ignore[bad-return, unsupported-operation]
 
   def _potential_temperature_to_temperature(
       self,
@@ -192,14 +192,14 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
       """Computes the reference pressure."""
       return self._p_thermal * tf.math.exp(
           -(z + self._height * delta_t_frac *
-            (tf.math.log(1.0 - delta_t_frac * tf.math.tanh(z / self._height)) -
-             tf.math.log(1.0 + tf.math.tanh(z / self._height)) +
-             z / self._height)) / h_sfc / (1.0 - delta_t_frac**2))
+            (tf.math.log(1.0 - delta_t_frac * tf.math.tanh(z / self._height)) -  # pyrefly: ignore[unsupported-operation]
+             tf.math.log(1.0 + tf.math.tanh(z / self._height)) +  # pyrefly: ignore[unsupported-operation]
+             z / self._height)) / h_sfc / (1.0 - delta_t_frac**2))  # pyrefly: ignore[unsupported-operation]
 
     def pressure_const_theta(z: tf.Tensor) -> tf.Tensor:
       """Computes the reference pressure for constant potential temperature."""
       return (self._p_thermal *
-              (1.0 - thermodynamics_utils.G * z / self.cp_d / self._const_theta)
+              (1.0 - thermodynamics_utils.G * z / self.cp_d / self._const_theta)  # pyrefly: ignore[unsupported-operation]
               **(1.0 / self.kappa))
 
     return (
@@ -226,7 +226,7 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
       if self._params.use_3d_tf_tensor:
         zz = tf.zeros((self._params.nz, 1, 1), TF_DTYPE)
       else:
-        zz = [tf.constant(0, dtype=TF_DTYPE)] * self._params.nz
+        zz = [tf.constant(0, dtype=TF_DTYPE)] * self._params.nz  # pyrefly: ignore[bad-assignment]
 
     def temperature() -> FlowFieldVal:
       """Computes the reference temperature following the presumed profile."""
@@ -241,7 +241,7 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
         theta = self._const_theta * tf.ones((self._params.nz, 1, 1), TF_DTYPE)
       else:
         theta = [self._const_theta] * self._params.nz
-      return self._potential_temperature_to_temperature(theta, zz)
+      return self._potential_temperature_to_temperature(theta, zz)  # pyrefly: ignore[bad-argument-type]
 
     return (
         temperature()
@@ -268,13 +268,13 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
       if self._params.use_3d_tf_tensor:
         zz = tf.zeros((self._params.nz, 1, 1), TF_DTYPE)
       else:
-        zz = [tf.constant(0, dtype=TF_DTYPE)] * self._params.nz
+        zz = [tf.constant(0, dtype=TF_DTYPE)] * self._params.nz  # pyrefly: ignore[bad-assignment]
 
     return tf.nest.map_structure(
         lambda p_ref, t_ref: self.density_by_ideal_gas_law(
             p_ref, self.r_d, t_ref
         ),
-        self.p_ref(zz, additional_states),
+        self.p_ref(zz, additional_states),  # pyrefly: ignore[bad-argument-type]
         self.t_ref(zz),
     )
 
@@ -295,7 +295,7 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
     if 'T' in states:
       t = states['T']
     elif 'theta' in states:
-      t = self._potential_temperature_to_temperature(states['theta'], zz)
+      t = self._potential_temperature_to_temperature(states['theta'], zz)  # pyrefly: ignore[bad-argument-type]
     else:
       raise ValueError(
           'Either temperature or potential temperature is required for the '
@@ -330,7 +330,7 @@ class IdealGas(thermodynamics_generic.ThermodynamicModel):
         lambda p_i, w_mix_i, t_i: self.density_by_ideal_gas_law(
             p_i, R_U / w_mix_i, t_i
         ),
-        self.p_ref(zz, additional_states),
+        self.p_ref(zz, additional_states),  # pyrefly: ignore[bad-argument-type]
         mixture_molecular_weight,
         t,
     )

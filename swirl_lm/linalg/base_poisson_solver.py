@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -145,19 +145,19 @@ class PoissonSolver(object):
     if 0 in indices:
       terms.append(
           tf.nest.map_structure(
-              lambda x_i: x_i * self._params.dx**-2,
+              lambda x_i: x_i * self._params.dx**-2,  # pyrefly: ignore[unsupported-operation]
               self._kernel_op.apply_kernel_op_x(f, 'kddx'))
       )
     if 1 in indices:
       terms.append(
           tf.nest.map_structure(
-              lambda y_i: y_i * self._params.dy**-2,
+              lambda y_i: y_i * self._params.dy**-2,  # pyrefly: ignore[unsupported-operation]
               self._kernel_op.apply_kernel_op_y(f, 'kddy'))
       )
     if 2 in indices:
       terms.append(
           tf.nest.map_structure(
-              lambda z_i: z_i * self._params.dz**-2,
+              lambda z_i: z_i * self._params.dz**-2,  # pyrefly: ignore[unsupported-operation]
               self._kernel_op.apply_kernel_op_z(f, 'kddz', 'kddzsh'))
       )
     return tuple(terms)
@@ -171,7 +171,7 @@ class PoissonSolver(object):
     laplacian_terms = self._laplacian_terms(f, halo_update=halo_update)
     return tf.nest.map_structure(
         lambda ddx_, ddy_, ddz_: ddx_ + ddy_ + ddz_,
-        laplacian_terms[0], laplacian_terms[1], laplacian_terms[2])
+        laplacian_terms[0], laplacian_terms[1], laplacian_terms[2])  # pyrefly: ignore[bad-index]
 
   def compute_residual(
       self,

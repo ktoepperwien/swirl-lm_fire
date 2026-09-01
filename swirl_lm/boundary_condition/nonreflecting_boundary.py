@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -136,8 +136,8 @@ def nonreflecting_bc_state_update_fn(
           ' condition.'
       )
     varname, dim, face = params.bc_manager.parse_key(k)
-    bc_type, u_threshold = params.bc[varname][dim][face]
-    bc_params = params.bc_params[varname][dim][face]
+    bc_type, u_threshold = params.bc[varname][dim][face]  # pyrefly: ignore[unsupported-operation]
+    bc_params = params.bc_params[varname][dim][face]  # pyrefly: ignore[unsupported-operation]
     logging.info('Variable: %s, dimension: %d, face: %d is specified '
                  'with nonreflecting bc_type: %s, with velocity threshold '
                  'value: %f and bc_params %s', varname, dim, face, bc_type,

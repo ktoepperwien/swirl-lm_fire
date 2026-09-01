@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ class LookupGasOpticsLongwave(gas_base.AbstractLookupGasOptics):
     return data
 
   @classmethod
-  def from_nc_file(cls, path: str) -> 'LookupGasOpticsLongwave':
+  def from_nc_file(cls, path: str) -> 'LookupGasOpticsLongwave':  # pyrefly: ignore[bad-override]
     """Instantiates a `LookupGasOpticsLongwave` object from zipped netCDF file.
 
     The compressed file should be netCDF parsable and contain the RRTMGP

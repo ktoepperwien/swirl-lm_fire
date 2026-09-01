@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -144,7 +144,7 @@ class BoundaryConditionKeysHelper(PhysicalVariableKeysHelper):
 
     return (varname, dimension, face)
 
-  def _update_helper_variable_from_additional_states(
+  def _update_helper_variable_from_additional_states(  # pyrefly: ignore[bad-override]
       self,
       additional_states: types.ScalarFieldMap,
       bc: dict[str, halo_exchange.BoundaryConditionsSpec],
@@ -258,7 +258,7 @@ class SourceKeysHelper(PhysicalVariableKeysHelper):
     key_info = self._parse_key_text_info(additional_state_key)
     return None if key_info is None else key_info[0]
 
-  def _update_helper_variable_from_additional_states(
+  def _update_helper_variable_from_additional_states(  # pyrefly: ignore[bad-override]
       self,
       additional_states: types.ScalarFieldMap,
   ) -> types.ScalarFieldMap:

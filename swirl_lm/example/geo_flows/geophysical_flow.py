@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -155,7 +155,7 @@ class ConstantHeatSource:
     # tf.Tensor value. The type has to be a simple type (like float) because we
     # pass `x_center` to fancyflags which allows only a limited subset of
     # types. This is ok for now because pytype doesn't catch this as an error.
-    return dataclasses.replace(self, x_center=self.x_center + t * self.u)
+    return dataclasses.replace(self, x_center=self.x_center + t * self.u)  # pyrefly: ignore[unsupported-operation]
 
 
 _SIMULATION_TYPE = flags.DEFINE_enum_class(
@@ -359,7 +359,7 @@ class GeophysicalFlow():
 
     self.radiation_src_update_fn = self.sim_setup.radiation_src_update_fn
     self.radiation_state_keys = rrtmgp_common.additional_keys(
-        self.config.radiative_transfer,
+        self.config.radiative_transfer,  # pyrefly: ignore[bad-argument-type]
         self.config.additional_state_keys,
     )
 
@@ -413,12 +413,12 @@ class GeophysicalFlow():
 
     # Defines the ignition kernel if requested.
     if self.const_heat_src.include_const_heat_src:
-      if self.config.use_stretched_grid[self._g_dim]:
+      if self.config.use_stretched_grid[self._g_dim]:  # pyrefly: ignore[bad-index]
         # Rounding of fuel height to full grid is ignore for stretched mesh
         # because grid spacing is ambiguous is this case.
         src_height = self.const_heat_src.height
       else:
-        dz = [self.config.dx, self.config.dy, self.config.dz][self._g_dim]
+        dz = [self.config.dx, self.config.dy, self.config.dz][self._g_dim]  # pyrefly: ignore[bad-index]
         src_height = tf.math.ceil(self.const_heat_src.height / dz) * dz
       heat_src_magnitude = self.const_heat_src.heat_src_due_to_combustion(
           src_height
@@ -487,12 +487,12 @@ class GeophysicalFlow():
             '{} is not a valid option. Available options are: {})'.format(
                 varname, valid_varnames))
 
-      height = (xx, yy, zz)[self._g_dim]
+      height = (xx, yy, zz)[self._g_dim]  # pyrefly: ignore[bad-index]
 
       horizontal_domain_size = [lx, ly, lz]
       horizontal_coordinates = [xx, yy, zz]
-      del horizontal_coordinates[self._g_dim], horizontal_domain_size[
-          self._g_dim]
+      del horizontal_coordinates[self._g_dim], horizontal_domain_size[  # pyrefly: ignore[unsupported-operation]
+          self._g_dim]  # pyrefly: ignore[unsupported-operation]
 
       sim_states = self.sim_setup.thermodynamics_states(
           height,
@@ -519,7 +519,7 @@ class GeophysicalFlow():
         return t
 
       r_m = sim_states['r_m']
-      rho = p / r_m / t
+      rho = p / r_m / t  # pyrefly: ignore[unsupported-operation]
       if varname == 'rho':
         return rho
 
@@ -527,10 +527,10 @@ class GeophysicalFlow():
       q_l, q_i = self.cloud_utils.thermodynamics.equilibrium_phase_partition(
           t, rho, q_t)
       if varname == 'q_c':
-        return q_l + q_i
+        return q_l + q_i  # pyrefly: ignore[unsupported-operation]
 
       if varname == 'q_v':
-        return q_t - q_l - q_i
+        return q_t - q_l - q_i  # pyrefly: ignore[unsupported-operation]
 
       e = self.cloud_utils.thermodynamics.internal_energy(t, q_t, q_l, q_i)
       if varname == 'e':
@@ -576,7 +576,7 @@ class GeophysicalFlow():
           ' adjustment.'
       )
     grid_size = [self.config.nz, self.config.nx, self.config.ny]
-    grid_size[(self._g_dim + 1) % 3] = 1
+    grid_size[(self._g_dim + 1) % 3] = 1  # pyrefly: ignore[unsupported-operation]
 
     def update_mean(u, mean_old, mean_new, halos):
       """Updates the horizontal mean of `u`."""
@@ -587,9 +587,9 @@ class GeophysicalFlow():
 
     def get_local_1d_profile_along_gdim(u):
       """Retrieves part of a 1D variable `u` that is local to the replica."""
-      coord = common_ops.get_core_coordinate(replicas, replica_id)[self._g_dim]
-      n = [self.config.nx, self.config.ny, self.config.nz][self._g_dim]
-      core_n = [
+      coord = common_ops.get_core_coordinate(replicas, replica_id)[self._g_dim]  # pyrefly: ignore[bad-index]
+      n = [self.config.nx, self.config.ny, self.config.nz][self._g_dim]  # pyrefly: ignore[bad-index]
+      core_n = [  # pyrefly: ignore[bad-index]
           self.config.core_nx,
           self.config.core_ny,
           self.config.core_nz,
@@ -615,7 +615,7 @@ class GeophysicalFlow():
     dims = (0, 1, 2)
     replica_dims = (0, 1, 2)
     partition_dims = [0, 1, 2]
-    del partition_dims[self._g_dim]
+    del partition_dims[self._g_dim]  # pyrefly: ignore[unsupported-operation]
 
     # The mean velocity profile for inflow is computed along the time (2
     # because the time dimension is always the 0th dimension of a 3D tensor,
@@ -635,7 +635,7 @@ class GeophysicalFlow():
     ):
       lateral_dim = [0, 1, 2]
       lateral_dim.remove(self.inflow.inflow_dim)
-      lateral_dim.remove(self._g_dim)
+      lateral_dim.remove(self._g_dim)  # pyrefly: ignore[bad-argument-type]
       lateral_dim = lateral_dim[0]
       if lateral_dim == 1:
         # t(2)-z(0)-y(1) or t(2)-x(0)-y(1).
@@ -683,7 +683,7 @@ class GeophysicalFlow():
     # Means for the initial condition are taken with halos except for the
     # vertical dimension.
     halos_flow_field = [2] * 3
-    halos_flow_field[self._g_dim] = 0
+    halos_flow_field[self._g_dim] = 0  # pyrefly: ignore[unsupported-operation]
 
     for vel in list(common.KEYS_VELOCITY) + ['q_t', 'theta_li']:
       inflow_name = f'INFLOW_{vel.upper()}'
@@ -692,10 +692,10 @@ class GeophysicalFlow():
       if _INFLOW_INIT_OPTION.value == 'init_with_inflow':
         if inflow_name not in additional_states:
           continue
-        inflow_mean = inflow_mean_fn(additional_states[inflow_name])
+        inflow_mean = inflow_mean_fn(additional_states[inflow_name])  # pyrefly: ignore[not-callable]
         u_mean_old = (
             geophysical_flow_common.broadcast_vertical_profile_for_flow_field(
-                inflow_mean, self._g_dim
+                inflow_mean, self._g_dim  # pyrefly: ignore[bad-argument-type]
             )
         )
         u = tf.tile(u_mean_old, grid_size)
@@ -724,7 +724,7 @@ class GeophysicalFlow():
           )
           scaling_factor = scaling_factor_fn(
               get_local_1d_profile_along_gdim(
-                  self.config.global_xyz_with_halos[self._g_dim]
+                  self.config.global_xyz_with_halos[self._g_dim]  # pyrefly: ignore[bad-index]
               )
           )
         u_mean = tf.squeeze(
@@ -738,12 +738,12 @@ class GeophysicalFlow():
         )
         u_mean_old = (
             geophysical_flow_common.broadcast_vertical_profile_for_flow_field(
-                u_mean, self._g_dim
+                u_mean, self._g_dim  # pyrefly: ignore[bad-argument-type]
             )
         )
         u_mean_new = (
             geophysical_flow_common.broadcast_vertical_profile_for_flow_field(
-                scaling_factor * u_mean, self._g_dim
+                scaling_factor * u_mean, self._g_dim  # pyrefly: ignore[bad-argument-type]
             )
         )
         updated_states[vel] = update_mean(
@@ -757,11 +757,11 @@ class GeophysicalFlow():
               lambda x: tf.maximum(x, 0.0), updated_states[vel]
           )
         if inflow_name in additional_states:
-          inflow_mean = inflow_mean_fn(additional_states[inflow_name])
-          updated_additional_states[inflow_name] = inflow_update_fn(
+          inflow_mean = inflow_mean_fn(additional_states[inflow_name])  # pyrefly: ignore[not-callable]
+          updated_additional_states[inflow_name] = inflow_update_fn(  # pyrefly: ignore[not-callable]
               additional_states[inflow_name],
               inflow_mean,
-              inflow_bcast_fn(scaling_factor * u_mean),
+              inflow_bcast_fn(scaling_factor * u_mean),  # pyrefly: ignore[not-callable]
           )
           if inflow_name == 'INFLOW_Q_T':
             updated_additional_states[inflow_name] = tf.nest.map_structure(
@@ -792,7 +792,7 @@ class GeophysicalFlow():
         )
         u_mean_old = (
             geophysical_flow_common.broadcast_vertical_profile_for_flow_field(
-                sounding, self._g_dim
+                sounding, self._g_dim  # pyrefly: ignore[bad-argument-type]
             )
         )
 
@@ -803,11 +803,11 @@ class GeophysicalFlow():
             halos_flow_field,
         )
         if inflow_name in additional_states:
-          inflow_mean = inflow_mean_fn(additional_states[inflow_name])
-          updated_additional_states[inflow_name] = inflow_update_fn(
+          inflow_mean = inflow_mean_fn(additional_states[inflow_name])  # pyrefly: ignore[not-callable]
+          updated_additional_states[inflow_name] = inflow_update_fn(  # pyrefly: ignore[not-callable]
               additional_states[inflow_name],
               inflow_mean,
-              inflow_bcast_fn(sounding),
+              inflow_bcast_fn(sounding),  # pyrefly: ignore[not-callable]
           )
       else:
         raise NotImplementedError(
@@ -833,9 +833,9 @@ class GeophysicalFlow():
     updated_additional_states = {}
 
     halos = [self.config.halo_width] * 3
-    halos[self._g_dim] = 0
+    halos[self._g_dim] = 0  # pyrefly: ignore[unsupported-operation]
     mean_dims = [0, 1, 2]
-    del mean_dims[self._g_dim]
+    del mean_dims[self._g_dim]  # pyrefly: ignore[unsupported-operation]
 
     for varname in list(common.KEYS_VELOCITY) + list(
         self.config.transport_scalars_names
@@ -850,7 +850,7 @@ class GeophysicalFlow():
       )
       updated_additional_states[sponge_varname] = (
           geophysical_flow_common.broadcast_vertical_profile_for_flow_field(
-              vel_mean, self._g_dim
+              vel_mean, self._g_dim  # pyrefly: ignore[bad-argument-type]
           )
       )
 
@@ -891,17 +891,17 @@ class GeophysicalFlow():
     replica_dims = (0, 1, 2)
 
     zz = additional_states.get('zz', None)
-    if not self.config.use_stretched_grid[self._g_dim]:
+    if not self.config.use_stretched_grid[self._g_dim]:  # pyrefly: ignore[bad-index]
       # When not using stretched grid, updates the vertical coordinates in the
       # halos. When stretched grid is used, this is unnecessary because `zz`
       # saved into additional states already includes valid coordinates in the
       # halos.
-      h = self.config.grid_spacings[self._g_dim]
+      h = self.config.grid_spacings[self._g_dim]  # pyrefly: ignore[bad-index]
       if zz is not None:
         bc_zz = [
             [(halo_exchange.BCType.NEUMANN, 0.0)] * 2,
         ] * 3
-        bc_zz[self._g_dim] = [(halo_exchange.BCType.NEUMANN, h)] * 2
+        bc_zz[self._g_dim] = [(halo_exchange.BCType.NEUMANN, h)] * 2  # pyrefly: ignore[unsupported-operation]
         zz = halo_exchange.inplace_halo_exchange(
             tensor=additional_states['zz'],
             dims=dims,
@@ -954,7 +954,7 @@ class GeophysicalFlow():
         replicas,
         rho,
         rho_ref,
-        self._g_dim,
+        self._g_dim,  # pyrefly: ignore[bad-argument-type]
         self.config,
         additional_states,
     )
@@ -1024,7 +1024,7 @@ class GeophysicalFlow():
     if self.config.combustion is not None and self.fire_utils is not None:
       logging.info('Igniting the flow field.')
       ignition_fn = combustion.ignition_with_hot_kernel(
-          self.energy_variable,
+          self.energy_variable,  # pyrefly: ignore[bad-argument-type]
           self.fire_utils.ignition_temperature,
           self.config,
       )
@@ -1191,7 +1191,7 @@ class GeophysicalFlow():
       ), 'MOST compatible BC is requested but the model is not configured.'
 
       for active_scalar in self.config.boundary_models.most.active_scalar:
-        if self.config.bc[active_scalar][
+        if self.config.bc[active_scalar][  # pyrefly: ignore[unsupported-operation]
             self._g_dim][0][0] != halo_exchange.BCType.NEUMANN:
           raise ValueError('The surface boundary condition of MOST-active '
                            'scalars must be of type NEUMANN when enabling '
@@ -1384,10 +1384,10 @@ class GeophysicalFlow():
             kernel_op,
             replica_id,
             replicas,
-            step_id,
+            step_id,  # pyrefly: ignore[bad-argument-type]
             states,
-            additional_states,
-            params,  # pylint: disable=too-many-function-args
+            additional_states,  # pyrefly: ignore[bad-argument-type]
+            params,  # pylint: disable=too-many-function-args  # pyrefly: ignore[bad-argument-count]
         )
         for src_key, src_value in src.items():
           additional_states[src_key] = tf.nest.map_structure(
@@ -1437,7 +1437,7 @@ class GeophysicalFlow():
     }
 
     # Initializes helper variables.
-    zz_fn = lambda xx, yy, zz, lx, ly, lz, coord: (xx, yy, zz)[self._g_dim]
+    zz_fn = lambda xx, yy, zz, lx, ly, lz, coord: (xx, yy, zz)[self._g_dim]  # pyrefly: ignore[bad-index]
     output.update({
         'zz': initialize_states(zz_fn),
         'nu_t': initialize_states(init_fn_lib.constant_init_fn(0.0)),
@@ -1480,7 +1480,7 @@ class GeophysicalFlow():
         t = t_states['temperature']
         r_m = t_states['r_m']
 
-        rho = p / r_m / t
+        rho = p / r_m / t  # pyrefly: ignore[unsupported-operation]
 
         q_l, q_i = self.cloud_utils.thermodynamics.equilibrium_phase_partition(
             t, rho, q_t
@@ -1494,7 +1494,7 @@ class GeophysicalFlow():
         # domain, and the second is for the higher end.
         init_wind = {
             var: self.init_wind[var] if isinstance(self.init_wind[var], float)
-                 else self.init_wind[var][face] for var in ('u', 'v', 'w')
+                 else self.init_wind[var][face] for var in ('u', 'v', 'w')  # pyrefly: ignore[bad-index]
         }
 
         u = init_wind['u'] * tf.ones_like(halo_height)
@@ -1846,11 +1846,11 @@ class GeophysicalFlow():
     Returns:
       The heat flux at time `t`.
     """
-    horizontal_0, horizontal_1, _ = _mesh_grid(x, y, z, self._g_dim)
+    horizontal_0, horizontal_1, _ = _mesh_grid(x, y, z, self._g_dim)  # pyrefly: ignore[bad-argument-type]
     const_heat_src = self.const_heat_src.at_time_t(t)
     coeff = self.ramp_up_down_fn(t)
     heat_flux = tf.nest.map_structure(
-        lambda h_0, h_1: coeff * self._get_max_heat_flux(h_0, h_1,
+        lambda h_0, h_1: coeff * self._get_max_heat_flux(h_0, h_1,  # pyrefly: ignore[unsupported-operation]
                                                          const_heat_src),
         horizontal_0, horizontal_1)
     # NOTE(bcg): The flux variable needs to be a proper 3D tensor with a
@@ -1925,7 +1925,7 @@ class GeophysicalFlow():
     # states. Note that halos are safe here because they are initialized with
     # valid values.
     mean_axis = [0, 1, 2]
-    g_axis = (self._g_dim + 1) % 3
+    g_axis = (self._g_dim + 1) % 3  # pyrefly: ignore[unsupported-operation]
     mean_axis.remove(g_axis)
     for varname in list(common.KEYS_VELOCITY) + list(
         self.config.transport_scalars_names

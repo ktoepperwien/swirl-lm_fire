@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -157,7 +157,7 @@ _ShearFluxFnArgTypes = [
 
 def shear_flux(
     params: parameters_lib.SwirlLMParameters,
-) -> Callable[_ShearFluxFnArgTypes, FlowFieldMap]:
+) -> Callable[_ShearFluxFnArgTypes, FlowFieldMap]:  # pyrefly: ignore[bad-specialization, invalid-annotation, not-a-type]
   """Generates a function that computes the shear fluxes at cell faces.
 
   Args:
@@ -469,7 +469,7 @@ def bound_viscosity(
       h = additional_states[stretched_grid_util.h_face_key(dim)]
     else:
       h = tf.constant(params.grid_spacings[dim], dtype=types.TF_DTYPE)
-    nu_max = params.diff_stab_crit * (h**2 / params.dt)
+    nu_max = params.diff_stab_crit * (h**2 / params.dt)  # pyrefly: ignore[unsupported-operation]
     nu = tf.math.minimum(nu, nu_max)
 
   return nu

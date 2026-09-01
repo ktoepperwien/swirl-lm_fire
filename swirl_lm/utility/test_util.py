@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -188,7 +188,7 @@ def extract_1d_slice_in_dim(
     The 1D slice of `f_3d` along `dim`.
   """
   observe_slice = [other_idx, other_idx, other_idx]
-  observe_slice[dim] = slice(None)
+  observe_slice[dim] = slice(None)  # pyrefly: ignore[unsupported-operation]
   f_1d_slice = f_3d[tuple(observe_slice)]
   return f_1d_slice
 
@@ -230,7 +230,7 @@ def save_1d_array_to_tempfile(
   """Saves a 1D array to a tempfile and returns the path to the tempfile."""
   tempfile = test.create_tempfile()
   fname = os.path.join(tempfile)
-  np.savetxt(fname, array)
+  np.savetxt(fname, array)  # pyrefly: ignore[bad-argument-type]
   return fname
 
 
@@ -241,7 +241,7 @@ def get_np_array(
     halo_width: int,
 ) -> npt.NDArray:
   """Gets the numpy array of a particular variable."""
-  if np.prod(computation_shape) == 1:
+  if np.prod(computation_shape) == 1:  # pyrefly: ignore[no-matching-overload]
     result = state[varname].numpy()[
         halo_width:-halo_width, halo_width:-halo_width, halo_width:-halo_width
     ]
@@ -255,7 +255,7 @@ def l_infinity_norm(v: npt.ArrayLike) -> float:
 
 
 def l_infinity_error(field1: npt.ArrayLike, field2: npt.ArrayLike) -> float:
-  err = field1 - field2
+  err = field1 - field2  # pyrefly: ignore[unsupported-operation]
   return l_infinity_norm(err)
 
 

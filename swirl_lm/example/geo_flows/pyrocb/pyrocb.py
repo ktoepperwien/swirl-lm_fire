@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ class PyroCb(geophysical_flow_common.GeophysicalFlowSetup):
         if self.init_mode == 'PHYSICAL'
         else self.config.global_xyz
     )
-    zz = np.asarray(full_grid[self.g_dim])
+    zz = np.asarray(full_grid[self.g_dim])  # pyrefly: ignore[bad-index]
     sounding = geophysical_flow_common.load_sounding(
         sim_params.sounding_csv_filename.split(','), zz
     )
@@ -135,7 +135,7 @@ class PyroCb(geophysical_flow_common.GeophysicalFlowSetup):
 
     latitude = self.sim_params.latitude * np.pi / 180.0
     self.coriolis_force_fn = (
-        cloud_utils.coriolis_force(latitude, self.vel_inf, self.g_dim, True)
+        cloud_utils.coriolis_force(latitude, self.vel_inf, self.g_dim, True)  # pyrefly: ignore[bad-argument-type]
         if self.sim_params.apply_coriolis_force
         else None
     )
@@ -152,7 +152,7 @@ class PyroCb(geophysical_flow_common.GeophysicalFlowSetup):
     """Provides initial thermodynamic state for PyroCb."""
 
     def sounding_init_fn(varname: str):
-      return lambda z: self._init_from_sounding(varname, coord[self.g_dim])
+      return lambda z: self._init_from_sounding(varname, coord[self.g_dim])  # pyrefly: ignore[bad-argument-type, bad-index, unsupported-operation]
 
     theta = tf.nest.map_structure(sounding_init_fn('theta'), zz)
     q_t = tf.nest.map_structure(sounding_init_fn('q_v'), zz)
@@ -354,14 +354,14 @@ class PyroCb(geophysical_flow_common.GeophysicalFlowSetup):
     tracer_bc_name = f'bc_{TRACER_NAME}_{self.g_dim}_0'
     if tracer_bc_name in additional_states:
       t_s = common_ops.get_face(
-          additional_states['T_s'], self.g_dim, 0, self.config.halo_width
+          additional_states['T_s'], self.g_dim, 0, self.config.halo_width  # pyrefly: ignore[bad-argument-type]
       )[0]
       # Here we consider the use of 3D tf.Tensor only.
       tracer_bc = tf.where(
           tf.greater(t_s, 400.0), tf.ones_like(t_s), tf.zeros_like(t_s)
       )
       multiples = [1, 1, 1]
-      g_axis = (self.g_dim + 1) % 3
+      g_axis = (self.g_dim + 1) % 3  # pyrefly: ignore[unsupported-operation]
       multiples[g_axis] = self.config.halo_width + 1
       output[tracer_bc_name] = tf.tile(tracer_bc, multiples)
 

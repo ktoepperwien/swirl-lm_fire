@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -460,7 +460,7 @@ def _angle_to_point(
     point_y: float,
 ) -> initializer.TensorOrArray:
   """Computes the angle in radians from mesh points in `xx`, `yy` to a point."""
-  return tf.math.atan2(yy - point_y, xx - point_x)
+  return tf.math.atan2(yy - point_y, xx - point_x)  # pyrefly: ignore[unsupported-operation]
 
 
 def _distance_to_point(
@@ -471,7 +471,7 @@ def _distance_to_point(
 ) -> initializer.TensorOrArray:
   """Computes the distance from mesh points in `xx`, `yy` to a point."""
   return tf.math.sqrt(
-      tf.math.pow(xx - point_x, 2) + tf.math.pow(yy - point_y, 2)
+      tf.math.pow(xx - point_x, 2) + tf.math.pow(yy - point_y, 2)  # pyrefly: ignore[unsupported-operation]
   )
 
 
@@ -509,12 +509,12 @@ def _between_angles(
     A boolean array with the same shape as `x_radians`.
   """
   pi2 = 2 * np.pi
-  x = x_radians % pi2
+  x = x_radians % pi2  # pyrefly: ignore[unsupported-operation]
   theta_0, theta_1 = theta_0_radians % pi2, theta_1_radians % pi2
   if theta_0 < theta_1:
-    return (theta_0 <= x) & (x <= theta_1)
+    return (theta_0 <= x) & (x <= theta_1)  # pyrefly: ignore[bad-return]
   else:
-    return (x >= theta_0) | (x <= theta_1)
+    return (x >= theta_0) | (x <= theta_1)  # pyrefly: ignore[bad-return]
 
 
 def _distance_to_arc(
@@ -547,7 +547,7 @@ def _distance_to_arc(
   """
 
   distance_to_circle = tf.math.abs(
-      _distance_to_point(xx, yy, center_x, center_y) - radius
+      _distance_to_point(xx, yy, center_x, center_y) - radius  # pyrefly: ignore[unsupported-operation]
   )
   p1 = _point_on_circle(center_x, center_y, radius, theta_0)
   p2 = _point_on_circle(center_x, center_y, radius, theta_1)
@@ -652,8 +652,8 @@ class WildfireUtils:
       velocity_init_opt = VelocityInitAndInflowOption.FROM_COMPONENT_FLAGS
 
     if velocity_init_opt == VelocityInitAndInflowOption.FROM_CONFIG:
-      self.u_init = self.config.bc['u'][0][0][1]
-      self.v_init = self.config.bc['v'][0][0][1]
+      self.u_init = self.config.bc['u'][0][0][1]  # pyrefly: ignore[unsupported-operation]
+      self.v_init = self.config.bc['v'][0][0][1]  # pyrefly: ignore[unsupported-operation]
     elif velocity_init_opt == VelocityInitAndInflowOption.FROM_COMPONENT_FLAGS:
       self.u_init = _U_INIT.value
       self.v_init = _V_INIT.value
@@ -681,7 +681,7 @@ class WildfireUtils:
         else _T_INIT.value
     )
     self.y_o_init = (
-        self.config.bc['Y_O'][0][0][1]
+        self.config.bc['Y_O'][0][0][1]  # pyrefly: ignore[unsupported-operation]
         if not self.config.periodic_dims[0] and 'Y_O' in self.config.bc
         else _Y_O_INIT.value
     )
@@ -728,7 +728,7 @@ class WildfireUtils:
 
     if is_single_layer_fuel:
       self.fuel_density = _FUEL_DENSITY.value
-      self.fuel_bed_height = np.maximum(_FUEL_BED_HEIGHT.value, 0.0)
+      self.fuel_bed_height = np.maximum(_FUEL_BED_HEIGHT.value, 0.0)  # pyrefly: ignore[no-matching-overload]
       self.moisture_density = _MOISTURE_DENSITY.value
       self.fuel_layers = [{
           'height': self.fuel_bed_height,
@@ -820,10 +820,10 @@ class WildfireUtils:
     self.use_sponge = bool(self.config.sponge)
     if self.use_sponge:
       self.sponge = rayleigh_damping_layer.RayleighDampingLayer(
-          self.config.sponge
+          self.config.sponge  # pyrefly: ignore[bad-argument-type]
       )
       self.all_sponge_vars = rayleigh_damping_layer.sponge_info_map(
-          self.config.sponge
+          self.config.sponge  # pyrefly: ignore[bad-argument-type]
       )
       self.sponge_target_names = {}
 
@@ -855,7 +855,7 @@ class WildfireUtils:
 
       fuel_var = tf.zeros_like(zz)
       fuel_layer_thickness = [layer['height'] for layer in self.fuel_layers]
-      fuel_top_height = np.sum(fuel_layer_thickness)
+      fuel_top_height = np.sum(fuel_layer_thickness)  # pyrefly: ignore[no-matching-overload]
       # The loop goes from top to bottom so that layers lower than the previous
       # ones will override what is previously assigned.
       for layer in self.fuel_layers[::-1]:
@@ -1020,7 +1020,7 @@ class WildfireUtils:
 
     inflow_face = 0 if velocity_mean > 0 else 1
     return synthetic_turbulent_inflow.SyntheticTurbulentInflow(
-        length_scale, delta, self.mesh_size, inflow_dim, inflow_face)
+        length_scale, delta, self.mesh_size, inflow_dim, inflow_face)  # pyrefly: ignore[bad-argument-type]
 
   def init_fn_ones(self, xx: tf.Tensor, yy: tf.Tensor, zz: tf.Tensor, lx: float,
                    ly: float, lz: float, coord: ThreeIntTuple) -> tf.Tensor:
@@ -1214,9 +1214,9 @@ class WildfireUtils:
                 self.ignition_option))
 
       rr = tf.math.sqrt(
-          tf.math.pow(xx - self.ignition_center_x, 2) +
-          tf.math.pow(yy - self.ignition_center_y, 2) +
-          tf.math.pow(zz - self.ignition_center_z, 2))
+          tf.math.pow(xx - self.ignition_center_x, 2) +  # pyrefly: ignore[unsupported-operation]
+          tf.math.pow(yy - self.ignition_center_y, 2) +  # pyrefly: ignore[unsupported-operation]
+          tf.math.pow(zz - self.ignition_center_z, 2))  # pyrefly: ignore[unsupported-operation]
 
       sphere = 0.5 * (
           tf.math.tanh(self.ignition_scale * (rr + self.ignition_radius))
@@ -1259,7 +1259,7 @@ class WildfireUtils:
       )
       arc = tf.where(
           tf.math.less_equal(d, 0.5 * self.ignition_arc_width),
-          tf.math.cos(d * np.pi / self.ignition_arc_width) ** 2,
+          tf.math.cos(d * np.pi / self.ignition_arc_width) ** 2,  # pyrefly: ignore[unsupported-operation]
           tf.zeros_like(d),
       )
       location_z = tf.math.logical_and(
@@ -1392,7 +1392,7 @@ class WildfireUtils:
           'Inflow dimension should be 0 or 1. {} is not allowed.'.format(
               inflow_dim))
 
-    r = inflow_generator.generate_random_fields(self.inflow_seed)
+    r = inflow_generator.generate_random_fields(self.inflow_seed)  # pyrefly: ignore[bad-argument-type]
     inflow_face = 0 if velocity_mean > 0 else 1
 
     def varname(var_type: str, velocity: str) -> str:
@@ -1400,16 +1400,16 @@ class WildfireUtils:
       return inflow_generator.helper_key(var_type, velocity, inflow_dim,
                                          inflow_face)
 
-    return {
+    return {  # pyrefly: ignore[bad-return]
         varname('bc', 'u'): self.u_mean * ones,
         varname('bc', 'v'): self.v_mean * ones,
         varname('bc', 'w'): zeros,
-        varname('mean', 'u'): self.u_mean * mask,
-        varname('mean', 'v'): self.v_mean * mask,
+        varname('mean', 'u'): self.u_mean * mask,  # pyrefly: ignore[unsupported-operation]
+        varname('mean', 'v'): self.v_mean * mask,  # pyrefly: ignore[unsupported-operation]
         varname('mean', 'w'): tf.zeros_like(mask, dtype=_TF_DTYPE),
-        varname('rms', 'u'): self.u_rms * mask,
-        varname('rms', 'v'): self.v_rms * mask,
-        varname('rms', 'w'): self.w_rms * mask,
+        varname('rms', 'u'): self.u_rms * mask,  # pyrefly: ignore[unsupported-operation]
+        varname('rms', 'v'): self.v_rms * mask,  # pyrefly: ignore[unsupported-operation]
+        varname('rms', 'w'): self.w_rms * mask,  # pyrefly: ignore[unsupported-operation]
         varname('rand', 'u'): r[0],
         varname('rand', 'v'): r[1],
         varname('rand', 'w'): r[2],
@@ -1430,6 +1430,6 @@ class WildfireUtils:
       compute the sponge forcing term.
     """
     klrc = rayleigh_damping_layer.klemp_lilly_relaxation_coeff_fns_for_sponges
-    beta_fns_by_name = klrc(self.config.sponge, self.config.x[0],
+    beta_fns_by_name = klrc(self.config.sponge, self.config.x[0],  # pyrefly: ignore[bad-argument-type]
                             self.config.y[0], self.config.z[0])
     return self.sponge.init_fn(self.config, coordinates, beta_fns_by_name)

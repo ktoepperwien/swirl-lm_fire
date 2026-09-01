@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -440,7 +440,7 @@ class Adapter(microphysics_generic.MicrophysicsAdapter):
         s: tf.Tensor,
     ) -> tf.Tensor:
       """Computes the condensation source term."""
-      return rho * (self._kessler.water_model.lh_v0 / cp) * (theta_0 / t_0) * s
+      return rho * (self._kessler.water_model.lh_v0 / cp) * (theta_0 / t_0) * s  # pyrefly: ignore[unsupported-operation]
 
     return tf.nest.map_structure(
         energy_source_fn, states['rho'], cp, t_0, theta_0, source

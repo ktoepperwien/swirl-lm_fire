@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,15 +58,15 @@ class RRTMGP:
     self._halos = config.halo_width
     # The vertical grid spacing used in computing the local water path for an
     # atmospheric grid cell.
-    self._dh = config.grid_spacings[self._g_dim]
+    self._dh = config.grid_spacings[self._g_dim]  # pyrefly: ignore[bad-index]
     # Whether stretched grid is used in each dimension.
     self._use_stretched_grid = config.use_stretched_grid
     # The two-stream radiative transfer solver.
     self._two_stream_solver = two_stream.TwoStreamSolver(
-        config.radiative_transfer,
+        config.radiative_transfer,  # pyrefly: ignore[bad-argument-type]
         config,
         self._kernel_op,
-        self._g_dim,
+        self._g_dim,  # pyrefly: ignore[bad-argument-type]
         grid_extension_lib
     )
     # Data library containing atmospheric gas concentrations.
@@ -75,7 +75,7 @@ class RRTMGP:
     self._microphysics_lib = microphysics_one_moment.Adapter(
         config, self._water
     )
-    self._vertical_coord_name = ('xx', 'yy', 'zz')[self._g_dim]
+    self._vertical_coord_name = ('xx', 'yy', 'zz')[self._g_dim]  # pyrefly: ignore[bad-index]
 
   def _compute_cloud_path(
       self,
@@ -84,12 +84,12 @@ class RRTMGP:
       additional_states: FlowFieldMap,
   ) -> FlowFieldVal:
     """Computes the cloud water/ice path in an atmospheric grid cell."""
-    if self._use_stretched_grid[self._g_dim]:
-      h = additional_states[stretched_grid_util.h_key(self._g_dim)]
+    if self._use_stretched_grid[self._g_dim]:  # pyrefly: ignore[bad-index]
+      h = additional_states[stretched_grid_util.h_key(self._g_dim)]  # pyrefly: ignore[bad-argument-type]
       return common_ops.map_structure_3d(lambda a, b, c: a * b * c, rho, q_c, h)
     else:
       def cloud_path_fn(rho: tf.Tensor, q_c: tf.Tensor) -> tf.Tensor:
-        return rho * q_c * self._dh
+        return rho * q_c * self._dh  # pyrefly: ignore[unsupported-operation]
       return tf.nest.map_structure(cloud_path_fn, rho, q_c)
 
   def _prepare_states(
@@ -148,7 +148,7 @@ class RRTMGP:
         {'h2o': self._water.humidity_to_volume_mixing_ratio(q_t, q_c)}
     )
     molecules_per_area = self._water.air_molecules_per_area(
-        self._kernel_op, pressure, self._g_dim, vmr_fields['h2o']
+        self._kernel_op, pressure, self._g_dim, vmr_fields['h2o']  # pyrefly: ignore[bad-argument-type]
     )
     lwp = self._compute_cloud_path(states['rho'], q_liq, additional_states)
     iwp = self._compute_cloud_path(states['rho'], q_ice, additional_states)
@@ -267,13 +267,13 @@ class RRTMGP:
         rrtmgp_common.KEY_STORED_RADIATION: heating_rate
     }
     rrtmgp_keys = rrtmgp_common.additional_keys(
-        self._config.radiative_transfer, self._config.additional_state_keys
+        self._config.radiative_transfer, self._config.additional_state_keys  # pyrefly: ignore[bad-argument-type]
     )
     # Select only the diagnostic flux keys.
     diagnostic_flux_keys = [
         k
         for k in rrtmgp_keys
-        if k not in rrtmgp_common.required_keys(self._config.radiative_transfer)
+        if k not in rrtmgp_common.required_keys(self._config.radiative_transfer)  # pyrefly: ignore[bad-argument-type]
     ]
 
     if not diagnostic_flux_keys:
@@ -284,7 +284,7 @@ class RRTMGP:
     primary_grid_states_clr = self._clear_sky_states(primary_grid_states)
     extended_grid_states_clr = None
     if upper_atmosphere_states is not None:
-      extended_grid_states_clr = self._clear_sky_states(extended_grid_states)
+      extended_grid_states_clr = self._clear_sky_states(extended_grid_states)  # pyrefly: ignore[bad-argument-type]
 
     # Get net fluxes (upwelling - downwelling), including those from the
     # extended grid, if requested.

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -205,7 +205,7 @@ class Humidity(scalar_generic.ScalarGeneric):
           'e_int', e, rho_thermal, q_t, additional_states=additional_states)
     elif 'T' in additional_states:
       temperature = additional_states['T']
-    thermo_states.update({'T': temperature})
+    thermo_states.update({'T': temperature})  # pyrefly: ignore[unbound-name]
 
     # Compute the potential temperature.
     if 'theta' in states:
@@ -279,11 +279,11 @@ class Humidity(scalar_generic.ScalarGeneric):
       rain_water_momentum = tf.nest.map_structure(
           tf.math.multiply, rain_water_terminal_velocity, states['rho']
       )
-      momentum[self._g_dim] = tf.nest.map_structure(
-          tf.math.subtract, momentum[self._g_dim], rain_water_momentum
+      momentum[self._g_dim] = tf.nest.map_structure(  # pyrefly: ignore[unsupported-operation]
+          tf.math.subtract, momentum[self._g_dim], rain_water_momentum  # pyrefly: ignore[bad-index]
       )
 
-    return tuple(momentum)
+    return tuple(momentum)  # pyrefly: ignore[bad-return]
 
   def source_fn(
       self,
@@ -323,7 +323,7 @@ class Humidity(scalar_generic.ScalarGeneric):
 
     # Compute vapor to rain water conversion term if needed.
     if self._include_precipitation:
-      cloud_liquid_to_water_source = self._microphysics.humidity_source_fn(
+      cloud_liquid_to_water_source = self._microphysics.humidity_source_fn(  # pyrefly: ignore[missing-attribute]
           self._scalar_name,
           states,
           additional_states,
@@ -349,7 +349,7 @@ class Humidity(scalar_generic.ScalarGeneric):
             states[common.KEY_RHO],
             thermo_states['zz'],
             thermo_states['q_c'],
-            self._g_dim,
+            self._g_dim,  # pyrefly: ignore[bad-argument-type]
             additional_states,
         )
         source = tf.nest.map_structure(tf.math.add, source, subsidence_source)
@@ -413,7 +413,7 @@ class Humidity(scalar_generic.ScalarGeneric):
             w_i,
         )
         sedimentation_source = self._deriv_lib.deriv_centered(
-            sedimentation_flux, self._g_dim, additional_states
+            sedimentation_flux, self._g_dim, additional_states  # pyrefly: ignore[bad-argument-type]
         )
         source = tf.nest.map_structure(
             tf.math.add, source, sedimentation_source

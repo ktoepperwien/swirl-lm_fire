@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ class RTEUtils:
     assert a_is_tensor == isinstance(b, tf.Tensor)
 
     if not a_is_tensor and dim == 2:  # Append to Python list.
-      return a + b
+      return a + b  # pyrefly: ignore[unsupported-operation]
 
     if a_is_tensor:
       # Handles the case of single 3D tensor. Shifts `dim` to conform with the
@@ -328,7 +328,7 @@ class RTEUtils:
     bc = [[(halo_exchange.BCType.NEUMANN, 0.0)] * 2 for _ in range(3)]
     # Set the boundary plane that initiates the recurrent operation as the
     # boundary values.
-    bc[dim][x0_face] = (
+    bc[dim][x0_face] = (  # pyrefly: ignore[unsupported-operation]
         halo_exchange.BCType.DIRICHLET,
         [x0] * self.halos,
     )
@@ -364,7 +364,7 @@ class RTEUtils:
         [(halo_exchange.BCType.NEUMANN, 0.0)] * 2 for _ in range(3)
     ]
     # Set the plane that initiates the recurrent operation as boundary value.
-    bc_with_boundary_val[dim][x0_face] = (
+    bc_with_boundary_val[dim][x0_face] = (  # pyrefly: ignore[unsupported-operation]
         halo_exchange.BCType.DIRICHLET,
         [x0] * self.halos,
     )

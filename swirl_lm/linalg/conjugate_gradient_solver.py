@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -171,9 +171,9 @@ def conjugate_gradient_solver(
       3. Number of iterations used for the computation.
   """
   if isinstance(b, tf.Tensor):
-    b = [b]
+    b = [b]  # pyrefly: ignore[bad-assignment]
   if isinstance(x0, tf.Tensor):
-    x0 = [x0]
+    x0 = [x0]  # pyrefly: ignore[bad-assignment]
 
   if internal_dtype is not None and b:
     input_dtype = b[0].dtype  # pytype: disable=attribute-error

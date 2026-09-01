@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ def outflow_boundary_condition() -> StatesUpdateFn:
         group_assignment,
     )
 
-    cfl = params.dt * u_max / params.dx
+    cfl = params.dt * u_max / params.dx  # pyrefly: ignore[unsupported-operation]
     coeff = 1.0 - cfl
 
     def mass_flux_x_face(face_index):
@@ -85,7 +85,7 @@ def outflow_boundary_condition() -> StatesUpdateFn:
       bc_name = 'bc_{}_0_1'.format(var_name)
       correction_factor = mass_correction if var_name == 'u' else 1.0
       return correction_factor * (
-          coeff * additional_states[bc_name]
+          coeff * additional_states[bc_name]  # pyrefly: ignore[unsupported-operation]
           + (1.0 - coeff)
           * states[var_name][:, -params.halo_width - 1 : -params.halo_width, :]
       )

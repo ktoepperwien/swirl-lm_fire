@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -203,7 +203,7 @@ class FastDiagonalization(PoissonSolver):
     a = []
     for dim in range(3):
       a.append(
-          _make_laplacian_matrix(n_global[dim], self._grid_spacing[dim],
+          _make_laplacian_matrix(n_global[dim], self._grid_spacing[dim],  # pyrefly: ignore[bad-argument-type]
                                  self._bc[dim]))
 
     solver = fast_diagonalization_solver.fast_diagonalization_solver(
@@ -238,7 +238,7 @@ class FastDiagonalization(PoissonSolver):
     return {
         X:
             halo_exchange.inplace_halo_exchange(
-                p,
+                p,  # pyrefly: ignore[bad-argument-type]
                 dims=(0, 1, 2),
                 replica_id=replica_id,
                 replicas=replicas,
@@ -326,7 +326,7 @@ class ConjugateGradient(PoissonSolver):
     halo_update_for_compatibility = (
         jacobi_solver.halo_update_for_compatibility_fn(
             replica_id, replicas, computation_shape, rhs_mean, self._halo_width,
-            self._params.dx, self._params.dy, self._params.dz))
+            self._params.dx, self._params.dy, self._params.dz))  # pyrefly: ignore[bad-argument-type]
     halo_update = (
         halo_update_fn if halo_update_fn else halo_update_for_compatibility)
 
@@ -420,15 +420,15 @@ class ConjugateGradient(PoissonSolver):
 
           terms = []
           if 0 in indices:
-            terms.append(self._params.dx**2 *
+            terms.append(self._params.dx**2 *  # pyrefly: ignore[unsupported-operation]
                          kernel_op.apply_kernel_op_x(tf.stack(f), 'filterx'))
 
           if 1 in indices:
-            terms.append(self._params.dy**2 *
+            terms.append(self._params.dy**2 *  # pyrefly: ignore[unsupported-operation]
                          kernel_op.apply_kernel_op_y(tf.stack(f), 'filtery'))
 
           if 2 in indices:
-            terms.append(self._params.dz**2 *
+            terms.append(self._params.dz**2 *  # pyrefly: ignore[unsupported-operation]
                          kernel_op.apply_kernel_op_z(
                              tf.stack(f), 'filterz', 'filterzsh'))
 
@@ -438,15 +438,15 @@ class ConjugateGradient(PoissonSolver):
         if band_config.HasField('dominating_direction'):
           dominating_index = band_config.dominating_direction
         else:
-          dominating_index = np.argmin(values)
+          dominating_index = np.argmin(values)  # pyrefly: ignore[bad-argument-type, no-matching-overload]
 
         # Apply ConvOps.
         def get_term(f):
           """Apply preconditioner with the operator `O`."""
           # Compares with the second miminal grid spacing.
           if (band_config.HasField('dominating_grid_spacing_gap') and
-              values[dominating_index] >=
-              sorted(values)[1] + band_config.dominating_grid_spacing_gap):
+              values[dominating_index] >=  # pyrefly: ignore[unsupported-operation]
+              sorted(values)[1] + band_config.dominating_grid_spacing_gap):  # pyrefly: ignore[bad-specialization, unsupported-operation]
             raise ValueError(
                 'To enable preconditioning with Taylor expansion, please make '
                 'sure one direction dominates over the other, i.e. there is '
@@ -456,7 +456,7 @@ class ConjugateGradient(PoissonSolver):
 
           # Step 01: x (If x is the dominating direction)
           rhs = band_matrix_terms(
-              halo_update(f), indices=(dominating_index,))[0]
+              halo_update(f), indices=(dominating_index,))[0]  # pyrefly: ignore[bad-argument-type]
 
           # Step 02: (A_y + A_z) x
           indices = [i for i in range(3) if i != dominating_index]
@@ -490,7 +490,7 @@ class ConjugateGradient(PoissonSolver):
               *([nested_rhs] + terms_to_o_n),
           )
           # pylint: enable=g-complex-comprehension
-          return band_matrix_terms(halo_update(term), [dominating_index])[0]
+          return band_matrix_terms(halo_update(term), [dominating_index])[0]  # pyrefly: ignore[bad-argument-type]
 
         # Case 2: Falls back to the one single term version.
         if band_config.symmetric:
@@ -501,7 +501,7 @@ class ConjugateGradient(PoissonSolver):
               lambda a, b, c: a + b + c, rhs_x, rhs_y, rhs_z
           )
 
-        return band_matrix_terms(nested_rhs, [dominating_index])[0]
+        return band_matrix_terms(nested_rhs, [dominating_index])[0]  # pyrefly: ignore[bad-argument-type]
 
       preconditioner = preconditioner_fn
     else:
@@ -512,7 +512,7 @@ class ConjugateGradient(PoissonSolver):
         dot,
         rhs,
         self._max_iters,
-        self._tol,
+        self._tol,  # pyrefly: ignore[bad-argument-type]
         p0,
         l2_norm_reduction=self._l2_norm_reduction,
         component_wise_distance_fn=component_wise_distance_fn,

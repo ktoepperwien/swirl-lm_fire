@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -366,7 +366,7 @@ class AbstractLookupGasOptics(loader.DataLoaderBase, metaclass=abc.ABCMeta):
         kmajor=tables['kmajor'],
         kminor_lower=tables['kminor_lower'],
         kminor_upper=tables['kminor_upper'],
-        bnd_lims_gpt=tables['bnd_limits_gpt'] - 1,
+        bnd_lims_gpt=tables['bnd_limits_gpt'] - 1,  # pyrefly: ignore[unsupported-operation]
         bnd_lims_wn=tables['bnd_limits_wavenumber'],
         g_point_to_bnd=tf.constant(g_point_to_bnd),
         minor_lower_bnd=tf.constant(minor_lower_bnd),

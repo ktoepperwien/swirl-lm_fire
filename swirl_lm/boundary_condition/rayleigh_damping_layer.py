@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -222,17 +222,17 @@ def klemp_lilly_relaxation_coeff_fn(
       face = sponge.face if sponge.HasField('face') else 1
 
       if face == 1:
-        h_d = (1.0 - sponge.fraction) * h_t + c0
+        h_d = (1.0 - sponge.fraction) * h_t + c0  # pyrefly: ignore[unsupported-operation]
         buf = tf.compat.v1.where(
             tf.less_equal(grid, h_d), tf.zeros_like(grid),
             a_max * tf.math.pow(
-                tf.math.sin(np.pi / 2.0 * (grid - h_d) / (h_t - h_d)), 2))
+                tf.math.sin(np.pi / 2.0 * (grid - h_d) / (h_t - h_d)), 2))  # pyrefly: ignore[unsupported-operation]
       elif face == 0:
-        h_d = sponge.fraction * h_t + c0
+        h_d = sponge.fraction * h_t + c0  # pyrefly: ignore[unsupported-operation]
         buf = tf.compat.v1.where(
             tf.greater_equal(grid, h_d), tf.zeros_like(grid),
             a_max *
-            tf.math.pow(tf.math.sin(np.pi / 2.0 * tf.abs(grid - h_d) / h_d), 2))
+            tf.math.pow(tf.math.sin(np.pi / 2.0 * tf.abs(grid - h_d) / h_d), 2))  # pyrefly: ignore[unsupported-operation]
       else:
         raise ValueError(
             'Face index has to be one of 0 and 1. {} is provided.'.format(face))
@@ -241,7 +241,7 @@ def klemp_lilly_relaxation_coeff_fn(
 
     return beta
 
-  return init_fn
+  return init_fn  # pyrefly: ignore[bad-return]
 
 
 def klemp_lilly_relaxation_coeff_fns_for_sponges(
@@ -314,7 +314,7 @@ class RayleighDampingLayer(object):
       target_value = common_ops.global_mean(
           field, replicas, axis=target_value_mean_dims)
 
-    return beta / dt * (target_value - field)
+    return beta / dt * (target_value - field)  # pyrefly: ignore[unsupported-operation]
 
   @property
   def varnames(self) -> Sequence[str]:
@@ -409,7 +409,7 @@ class RayleighDampingLayer(object):
         value: FlowFieldVal,
     ) -> FlowFieldVal:
       """Adds two states elementwise."""
-      return additional_states[name] + value
+      return additional_states[name] + value  # pyrefly: ignore[unsupported-operation]
 
     additional_states_updated = {}
     additional_states_updated.update(additional_states)
@@ -437,7 +437,7 @@ class RayleighDampingLayer(object):
           self._target_value_mean_dims_by_var[varname],
           target_val)
       if not self._is_primitive[varname]:
-        sponge_force = states['rho'] * sponge_force
+        sponge_force = states['rho'] * sponge_force  # pyrefly: ignore[unsupported-operation]
       additional_states_updated.update(
           {sponge_name: add_to_additional_states(sponge_name, sponge_force)})
 

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -71,11 +71,11 @@ class Cloud(object):
     Returns:
       The radiation source term.
     """
-    return (_F0 * tf.math.exp(-_KAPPA * q_h) +
-            _F1 * tf.math.exp(-_KAPPA * q_l) +
+    return (_F0 * tf.math.exp(-_KAPPA * q_h) +  # pyrefly: ignore[unsupported-operation]
+            _F1 * tf.math.exp(-_KAPPA * q_l) +  # pyrefly: ignore[unsupported-operation]
             rho * self._water_model.cp_d * _D * _ALPHA_Z *
-            (0.25 * tf.math.pow(tf.maximum(z - _ZI, 0.0), 4.0 / 3.0) +
-             _ZI * tf.math.pow(tf.maximum(z - _ZI, 0.0), 1.0 / 3.0)))
+            (0.25 * tf.math.pow(tf.maximum(z - _ZI, 0.0), 4.0 / 3.0) +  # pyrefly: ignore[unsupported-operation]
+             _ZI * tf.math.pow(tf.maximum(z - _ZI, 0.0), 1.0 / 3.0)))  # pyrefly: ignore[unsupported-operation]
 
   def source_by_radiation(
       self,
@@ -113,7 +113,7 @@ class Cloud(object):
         halo if dim == g_dim else 0 for dim, halo in enumerate(halos)
     ]
     vertical_paddings = [(0, 0)] * 3
-    vertical_paddings[g_dim] = [halos[g_dim]] * 2
+    vertical_paddings[g_dim] = [halos[g_dim]] * 2  # pyrefly: ignore[unsupported-operation]
 
     def zero_out_vertical_halos(f):
       return common_ops.pad(

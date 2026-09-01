@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -181,11 +181,11 @@ def _dft_partial_mesh_for_core(
     vec_dim1 = tf.cast(tf.range(num_pts), dtype=_DTYPE)
 
   vec_dim2 = [0.0]
-  mat_dim0, mat_dim1, _ = common_ops.meshgrid(vec_dim0, vec_dim1, vec_dim2)
+  mat_dim0, mat_dim1, _ = common_ops.meshgrid(vec_dim0, vec_dim1, vec_dim2)  # pyrefly: ignore[unbound-name]
   mat_dim0 = tf.cast(tf.squeeze(mat_dim0, 2), dtype=_CTYPE)
   mat_dim1 = tf.cast(tf.squeeze(mat_dim1, 2), dtype=_CTYPE)
 
-  return value_fn(mat_dim0, mat_dim1, num_pts)
+  return value_fn(mat_dim0, mat_dim1, num_pts)  # pyrefly: ignore[unbound-name]
 
 
 def gen_vandermonde_mat(

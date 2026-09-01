@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -228,7 +228,7 @@ def _germano_averaging(
       for value_i in value:
         local_sum += value_i
       value_z_sum = sum_in_dim(local_sum, group_assignment_z)
-      value = [
+      value = [  # pyrefly: ignore[bad-assignment]
           value_z_sum,
       ] * nz
 
@@ -349,7 +349,7 @@ class SgsModel(object):
         )
       smagorinsky_vars = velocity if use_pr_t else field_vars
       diff_t = self.smagorinsky(
-          smagorinsky_vars, additional_states,
+          smagorinsky_vars, additional_states,  # pyrefly: ignore[bad-argument-type]
           self._params.smagorinsky.delta_formula, c_s)
     elif self._params.WhichOneof('sgs_model_type') == 'dynamic_smagorinsky':
       if not velocity:
@@ -387,8 +387,8 @@ class SgsModel(object):
       scalar = velocity if use_pr_t else field_vars
 
       diff_t = self.smagorinsky_lilly(
-          scalar,
-          velocity,
+          scalar,  # pyrefly: ignore[bad-argument-type]
+          velocity,  # pyrefly: ignore[bad-argument-type]
           additional_states['theta_v'],
           c_s,
           self._params.smagorinsky_lilly.pr_t,
@@ -397,7 +397,7 @@ class SgsModel(object):
     elif self._params.WhichOneof('sgs_model_type') == 'vreman':
       diff_t = tf.nest.map_structure(
           lambda nu_t: nu_t / self._params.vreman.pr_t,
-          self.vreman(velocity, self._params.vreman.c_s, additional_states),
+          self.vreman(velocity, self._params.vreman.c_s, additional_states),  # pyrefly: ignore[bad-argument-type]
       )
     else:
       raise ValueError(
@@ -650,13 +650,13 @@ class SgsModel(object):
 
     def lm_mm_scalar():
       """Compute the L_i M_i, M_i M_i in the dynamic model for scalar."""
-      scalar_filtered = _test_filter(scalar)
-      g_i = calculus.grad(self._deriv_lib, (scalar,), additional_states)[0]
+      scalar_filtered = _test_filter(scalar)  # pyrefly: ignore[bad-argument-type]
+      g_i = calculus.grad(self._deriv_lib, (scalar,), additional_states)[0]  # pyrefly: ignore[bad-argument-type]
       g_i_filtered = [_test_filter(g_i_l) for g_i_l in g_i]
 
       def resolved_scalar_stress(i):
         """Computes the resolved scalar stress L_ij."""
-        t_i = _test_filter(_dot(velocity[i], scalar))
+        t_i = _test_filter(_dot(velocity[i], scalar))  # pyrefly: ignore[bad-argument-type]
         tau_i = _dot(velocity_filtered[i], scalar_filtered)
         return tf.nest.map_structure(tf.math.subtract, t_i, tau_i)
 
@@ -703,7 +703,7 @@ class SgsModel(object):
             # simplicity.
             tf.zeros_like(m_avg_inner[0]),
         ] * halo_width
-        m_avg_inner = z_pad + m_avg_inner + z_pad
+        m_avg_inner = z_pad + m_avg_inner + z_pad  # pyrefly: ignore[unsupported-operation]
         m_avg_full = tf.nest.map_structure(
             lambda inner: tf.pad(  # pylint: disable=g-long-lambda
                 inner,

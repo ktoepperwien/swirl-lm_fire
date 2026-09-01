@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -700,7 +700,7 @@ class Pressure(object):
       ] * 3
       for dim in range(3):
         if self._params.periodic_dims[dim]:
-          bc_dp[dim] = [
+          bc_dp[dim] = [  # pyrefly: ignore[unsupported-operation]
               None,
           ] * 2
           continue
@@ -709,7 +709,7 @@ class Pressure(object):
           # If a boundary of the pressure is set to be a fixed value, no
           # modifications should be made to that boundary, hence the pressure
           # correction should be 0.
-          if self._bc['p'][dim][face][0] == halo_exchange.BCType.DIRICHLET:
+          if self._bc['p'][dim][face][0] == halo_exchange.BCType.DIRICHLET:  # pyrefly: ignore[unsupported-operation]
             bc_dp[dim][face] = (halo_exchange.BCType.DIRICHLET, 0.0)
 
       return exchange_halos(dpr, bc_dp)
@@ -722,7 +722,7 @@ class Pressure(object):
     # specified, in which case there will be infinite number of solutions.
     has_dirichlet_bc = any(
         not self._params.periodic_dims[dim] and  # pylint: disable=g-complex-comprehension
-        self._bc['p'][dim][face][0] == halo_exchange.BCType.DIRICHLET
+        self._bc['p'][dim][face][0] == halo_exchange.BCType.DIRICHLET  # pyrefly: ignore[unsupported-operation]
         for dim in range(3) for face in range(2))
     mean_removal = not has_dirichlet_bc
 
@@ -752,8 +752,8 @@ class Pressure(object):
     dp = poisson_solution[poisson_solver.X]
 
     dp = common_ops.remove_global_mean(
-        common_ops.tf_cast(dp, _TF_DTYPE), replicas,
-        halo_width) if mean_removal else common_ops.tf_cast(dp, _TF_DTYPE)
+        common_ops.tf_cast(dp, _TF_DTYPE), replicas,  # pyrefly: ignore[bad-argument-type]
+        halo_width) if mean_removal else common_ops.tf_cast(dp, _TF_DTYPE)  # pyrefly: ignore[bad-argument-type]
 
     if debug_output.is_debug_enabled('debug_pressure_residual'):
       residual = self._solver.residual(dp, b, helper_vars)
@@ -870,14 +870,14 @@ class Pressure(object):
           bc_p[dim][face] = None
 
         elif self._params.bc_type[dim][face] == BoundaryType.INFLOW:
-          bc_p[dim][face] = (halo_exchange.BCType.NEUMANN_2, 0.0)
+          bc_p[dim][face] = (halo_exchange.BCType.NEUMANN_2, 0.0)  # pyrefly: ignore[unsupported-operation]
 
         elif self._params.bc_type[dim][face] == BoundaryType.OUTFLOW:
           if self._pressure_params.pressure_outlet:
             # Enforce a pressure outlet boundary condition on demand.
-            bc_p[dim][face] = (halo_exchange.BCType.DIRICHLET, 0.0)
+            bc_p[dim][face] = (halo_exchange.BCType.DIRICHLET, 0.0)  # pyrefly: ignore[unsupported-operation]
           else:
-            bc_p[dim][face] = (halo_exchange.BCType.NEUMANN_2, 0.0)
+            bc_p[dim][face] = (halo_exchange.BCType.NEUMANN_2, 0.0)  # pyrefly: ignore[unsupported-operation]
 
         elif self._params.bc_type[dim][face] in (
             BoundaryType.SLIP_WALL,
@@ -891,11 +891,11 @@ class Pressure(object):
           if dim == self.g_dim:
             vertical_bc = self._pressure_params.vertical_bc_treatment
             if vertical_bc == VerticalBCTreatment.PRESSURE_BUOYANCY_BALANCING:
-              bc_p[dim][face] = self._pressure_bc_balanced_vertical(
+              bc_p[dim][face] = self._pressure_bc_balanced_vertical(  # pyrefly: ignore[unsupported-operation]
                   states, additional_states, face
               )
             elif vertical_bc == VerticalBCTreatment.APPROXIMATE:
-              bc_p[dim][face] = self._pressure_bc_approximate_vertical(
+              bc_p[dim][face] = self._pressure_bc_approximate_vertical(  # pyrefly: ignore[unsupported-operation]
                   states, additional_states, face
               )
             else:
@@ -921,7 +921,7 @@ class Pressure(object):
                 self._params.halo_width - 1
             )
             bc_planes = zeros + [bc_value] if face == 0 else [bc_value] + zeros
-            bc_p[dim][face] = (halo_exchange.BCType.NEUMANN, bc_planes)
+            bc_p[dim][face] = (halo_exchange.BCType.NEUMANN, bc_planes)  # pyrefly: ignore[unsupported-operation]
         else:
           raise ValueError(
               '{} is not defined for pressure boundary.'.format(
@@ -959,7 +959,7 @@ class Pressure(object):
     """
     dim = self.g_dim
     first_last_grid_spacing = _get_first_last_grid_spacing_for_wall_bc(
-        self._params, dim
+        self._params, dim  # pyrefly: ignore[bad-argument-type]
     )
     # Default treatment for vertical boundary condition.
     # Ensures the pressure balances with the buoyancy at the first fluid
@@ -973,21 +973,21 @@ class Pressure(object):
         states['rho_thermal'],
         rho_0,
         self._params,
-        dim,
+        dim,  # pyrefly: ignore[bad-argument-type]
         additional_states,
     )
     bc_value = tf.nest.map_structure(
         common_ops.average,
         common_ops.get_face(
             b,
-            dim,
+            dim,  # pyrefly: ignore[bad-argument-type]
             face,
             self._params.halo_width,
             first_last_grid_spacing[face],
         )[0],
         common_ops.get_face(
             b,
-            dim,
+            dim,  # pyrefly: ignore[bad-argument-type]
             face,
             self._params.halo_width - 1,
             first_last_grid_spacing[face],
@@ -1029,7 +1029,7 @@ class Pressure(object):
     """
     dim = self.g_dim
     first_last_grid_spacing = _get_first_last_grid_spacing_for_wall_bc(
-        self._params, dim
+        self._params, dim  # pyrefly: ignore[bad-argument-type]
     )
 
     # Ensures the pressure balances with the buoyancy at the first fluid layer
@@ -1041,7 +1041,7 @@ class Pressure(object):
         states['rho_thermal'],
         rho_0,
         self._params,
-        dim,
+        dim,  # pyrefly: ignore[bad-argument-type]
         additional_states,
     )
     if (
@@ -1052,10 +1052,10 @@ class Pressure(object):
     else:
       b = bbar
     b_first_interior = common_ops.get_face(
-        b, dim, face, self._params.halo_width
+        b, dim, face, self._params.halo_width  # pyrefly: ignore[bad-argument-type]
     )[0]
     b_second_interior = common_ops.get_face(
-        b, dim, face, self._params.halo_width + 1
+        b, dim, face, self._params.halo_width + 1  # pyrefly: ignore[bad-argument-type]
     )[0]
     if face == 0:
       # If the wall is at index -1/2, use the values of b on the first
@@ -1085,16 +1085,16 @@ class Pressure(object):
       # interior. Set p in the first halo node using:
       #   p_N = p_{N-2} + 2 h_{N-1} b_{N-1}
       p_second_interior = common_ops.get_face(
-          states['p'], dim, face, self._params.halo_width + 1
+          states['p'], dim, face, self._params.halo_width + 1  # pyrefly: ignore[bad-argument-type]
       )[0]
-      if self._params.use_stretched_grid[dim]:
+      if self._params.use_stretched_grid[dim]:  # pyrefly: ignore[bad-index]
         halo_width = self._params.halo_width
-        coord = self._params.global_xyz_with_halos[dim]
+        coord = self._params.global_xyz_with_halos[dim]  # pyrefly: ignore[bad-index]
         dz_last = (
             coord[-(halo_width - 1)] - coord[-(halo_width + 1)]
         ) / 2
       else:
-        dz_last = self._params.grid_spacings[dim]
+        dz_last = self._params.grid_spacings[dim]  # pyrefly: ignore[bad-index]
 
       def compute_bc_value(p, dz, b):
         return tf.nest.map_structure(

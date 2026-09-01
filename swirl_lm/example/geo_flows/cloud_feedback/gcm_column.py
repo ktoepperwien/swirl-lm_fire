@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -66,8 +66,8 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
         'reference_state'
     )
 
-    zz = np.asarray(self.config.global_xyz[self.g_dim], dtype=np.float64)
-    domain_height = [self.config.lx, self.config.ly, self.config.lz][self.g_dim]
+    zz = np.asarray(self.config.global_xyz[self.g_dim], dtype=np.float64)  # pyrefly: ignore[bad-index]
+    domain_height = [self.config.lx, self.config.ly, self.config.lz][self.g_dim]  # pyrefly: ignore[bad-index]
 
     # Use an extended grid to represent the upper atmosphere with a coarser grid
     # to enable solving the nonlocal radiative transfer equations.
@@ -75,7 +75,7 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
     # it extends all the way to the top-of-atmosphere boundary of the radiative
     # transfer model, and the extended grid is not necessary.
     self.grid_extension_lib = None
-    self._use_grid_extension = not config.use_stretched_grid[self.g_dim]
+    self._use_grid_extension = not config.use_stretched_grid[self.g_dim]  # pyrefly: ignore[bad-index]
     if self._use_grid_extension:
       # Top of atmosphere level where radiative transfer boundary conditions are
       # specified.
@@ -86,7 +86,7 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
           'The top of atmosphere height must be larger than the domain height'
           ' when using an extended grid.'
       )
-      self._dh = config.grid_spacings[self.g_dim]
+      self._dh = config.grid_spacings[self.g_dim]  # pyrefly: ignore[bad-index]
       # To be compatible with the top bounday condition of the primary grid,
       # preserve the uniform spacing of the primary grid in the first levels of
       # the extended grid that fall under the halo range of the primary grid.
@@ -105,7 +105,7 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
       # spacing.
       self._extended_dh = float((zz_extended[-1] - zz_extended[-2]))
       self.grid_extension_lib = grid_extension.GridExtension(
-          config, zz_extended, self.g_dim
+          config, zz_extended, self.g_dim  # pyrefly: ignore[bad-argument-type]
       )
       # The full grid including the extension.
       zz = np.concatenate([zz, zz_extended], axis=0)
@@ -140,16 +140,16 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
 
     if self.sim_params.latitude is not None:
       self.coriolis_force_fn = cloud_utils.coriolis_force(
-          self.sim_params.latitude, self.geostrophic_wind, self.g_dim)
+          self.sim_params.latitude, self.geostrophic_wind, self.g_dim)  # pyrefly: ignore[bad-argument-type]
 
     if 'theta_li' in sounding:
-      sounding.update(
+      sounding.update(  # pyrefly: ignore[no-matching-overload]
           self.compute_reference_state_from_theta_li(
               sounding['theta_li'], sounding['q_t'], zz
           )
       )
     elif 'temperature' in sounding:
-      sounding.update(
+      sounding.update(  # pyrefly: ignore[no-matching-overload]
           self.compute_reference_state_from_temperature(
               sounding['temperature'], sounding['q_t'], zz
           )
@@ -175,8 +175,8 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
         k: tf.cast(v, dtype=types.TF_DTYPE) for k, v in sounding.items()
     }
     self.init_wind = {
-        'u': sounding['u'],
-        'v': sounding['v'],
+        'u': sounding['u'],  # pyrefly: ignore[bad-assignment]
+        'v': sounding['v'],  # pyrefly: ignore[bad-assignment]
         'w': 0.0,
     }
 
@@ -286,7 +286,7 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
 
       res = tf.nest.map_structure(tf.math.subtract, theta, states['theta'])
 
-      return i + 1, {'p': p, 'theta': theta, 'q_l': q_l, 'q_i': q_i, 'res': res}
+      return i + 1, {'p': p, 'theta': theta, 'q_l': q_l, 'q_i': q_i, 'res': res}  # pyrefly: ignore[bad-return, unsupported-operation]
 
     states = self._iterative_solve(body, states_0)
     return {
@@ -419,7 +419,7 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
 
       res = tf.nest.map_structure(tf.math.subtract, theta, states['theta'])
 
-      return i + 1, {'p': p, 'theta': theta, 'q_l': q_l, 'q_i': q_i, 'res': res}
+      return i + 1, {'p': p, 'theta': theta, 'q_l': q_l, 'q_i': q_i, 'res': res}  # pyrefly: ignore[bad-return, unsupported-operation]
 
     states = self._iterative_solve(body, states_0)
     theta_li = (
@@ -463,8 +463,8 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
     return geophysical_flow_utils.perturbed_constant_init_fn(
         seed + self.sim_params.random_seed,
         mean,
-        self.g_dim,
-        local_grid_size,
+        self.g_dim,  # pyrefly: ignore[bad-argument-type]
+        local_grid_size,  # pyrefly: ignore[bad-argument-type]
         rms,
         mean_init_fn=mean_init_fn,
     )
@@ -482,7 +482,7 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
 
     def sounding_init_fn(varname: str):
       return lambda z: self._init_from_sounding(
-          varname, coord[self.g_dim]
+          varname, coord[self.g_dim]  # pyrefly: ignore[bad-argument-type, bad-index, unsupported-operation]
       )
 
     theta_li = tf.nest.map_structure(
@@ -505,14 +505,14 @@ class GCMColumn(common_lib.GeophysicalFlowSetup):
             theta_li, q_t, zz, 'theta_li', helper_states
         )
     )
-    xx, yy, zz = (
+    xx, yy, zz = (  # pyrefly: ignore[bad-assignment]
         geophysical_flow_utils.reorder_vertical_horizontal_coordinates_to_xyz(
-            zz, xx, yy, self.g_dim
+            zz, xx, yy, self.g_dim  # pyrefly: ignore[bad-argument-type]
         )
     )
     thermal_states['theta_li'] = tf.nest.map_structure(
         lambda x, y, z: self._perturbed_init_fn('theta_li')(
-            x, y, z, self.config.lx, self.config.ly, self.config.lz, coord),
+            x, y, z, self.config.lx, self.config.ly, self.config.lz, coord),  # pyrefly: ignore[bad-argument-type]
         xx, yy, zz)
 
     return thermal_states

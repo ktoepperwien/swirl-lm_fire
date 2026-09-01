@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -183,12 +183,12 @@ class Derivatives:
     """
     df_dim_face = self._backward_difference(array_node, axis)
     axis_index = self.grid_params.get_axis_index(axis)
-    if self.grid_params.use_stretched_grid[axis_index]:
-      h_face_key = stretched_grid_util.h_face_key(axis_index)
+    if self.grid_params.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
+      h_face_key = stretched_grid_util.h_face_key(axis_index)  # pyrefly: ignore[bad-argument-type]
       h_face = additional_states[h_face_key]
-      return df_dim_face / (h_face * self.grid_params.grid_spacings[axis_index])
+      return df_dim_face / (h_face * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
     else:
-      return df_dim_face / self.grid_params.grid_spacings[axis_index]
+      return df_dim_face / self.grid_params.grid_spacings[axis_index]  # pyrefly: ignore[bad-index]
 
   def deriv_face_to_node(
       self,
@@ -215,12 +215,12 @@ class Derivatives:
     """
     df_dim = self._forward_difference(array_face, axis)
     axis_index = self.grid_params.get_axis_index(axis)
-    if self.grid_params.use_stretched_grid[axis_index]:
-      h_key = stretched_grid_util.h_key(axis_index)
+    if self.grid_params.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
+      h_key = stretched_grid_util.h_key(axis_index)  # pyrefly: ignore[bad-argument-type]
       h = additional_states[h_key]
-      return df_dim / (h * self.grid_params.grid_spacings[axis_index])
+      return df_dim / (h * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
     else:
-      return df_dim / self.grid_params.grid_spacings[axis_index]
+      return df_dim / self.grid_params.grid_spacings[axis_index]  # pyrefly: ignore[bad-index]
 
   def deriv_centered(
       self,
@@ -243,12 +243,12 @@ class Derivatives:
     """
     df_dim = self._centered_difference(array_node, axis)
     axis_index = self.grid_params.get_axis_index(axis)
-    if self.grid_params.use_stretched_grid[axis_index]:
-      h_key = stretched_grid_util.h_key(axis_index)
+    if self.grid_params.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
+      h_key = stretched_grid_util.h_key(axis_index)  # pyrefly: ignore[bad-argument-type]
       h = additional_states[h_key]
-      return df_dim / (h * 2 * self.grid_params.grid_spacings[axis_index])
+      return df_dim / (h * 2 * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
     else:
-      return df_dim / (2 * self.grid_params.grid_spacings[axis_index])
+      return df_dim / (2 * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
 
   def deriv_2_node(
       self,
@@ -276,4 +276,4 @@ class Derivatives:
       self, custom_kernel_op: get_kernel_fn.ApplyKernelOp
   ) -> Self:
     """Creates a copy of derivative lib, but using a custom kernel op."""
-    return Derivatives(custom_kernel_op, self.grid_params)
+    return Derivatives(custom_kernel_op, self.grid_params)  # pyrefly: ignore[bad-return]

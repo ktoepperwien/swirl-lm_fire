@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -141,7 +141,7 @@ class Probe:
 
     # Update values from the correct replica.
     probes = {}
-    row_id = step_id - self.start_step_id
+    row_id = step_id - self.start_step_id  # pyrefly: ignore[unsupported-operation]
     for i in range(self.indices.shape[0]):
       probe_old = additional_states[self.probe_name(i)]
       ci = replicas[self.c_indices[i][0], self.c_indices[i][1],

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ def array_scatter_1d_update_global(
   )
   axis_index = grid_params.get_axis_index(axis)
   return jnp.where(
-      jax.lax.axis_index(mesh.axis_names[axis_index]) == core_index,
+      jax.lax.axis_index(mesh.axis_names[axis_index]) == core_index,  # pyrefly: ignore[bad-index]
       array_updated,
       array,
   )
@@ -172,12 +172,13 @@ def convert_to_3d_array_and_tile(
   assert f_1d.ndim == 1, f'Expecting rank-1 array, got rank-{f_1d.ndim} array.'
   axis_index = grid_params.get_axis_index(axis)
   reps = list(grid_params.to_data_axis_order(nx, ny, nz))
-  if reps[axis_index] != len(f_1d):
+  if reps[axis_index] != len(f_1d):  # pyrefly: ignore[bad-index]
     raise ValueError(
+        # pyrefly: ignore[bad-index]
         f'The length of `f_1d` ({len(f_1d)}) does not match the number of grid'
         f' points per core in the {axis} dimension ({reps[axis_index]}).'
     )
-  reps[axis_index] = 1
+  reps[axis_index] = 1  # pyrefly: ignore[unsupported-operation]
   reps = tuple(reps)
   return jnp.tile(reshape_to_broadcastable(f_1d, axis, grid_params), reps=reps)
 
@@ -303,17 +304,17 @@ def finite_diff_with_slice(
   s_max = max(shift) if max(shift) > 0 else 0
   s_min = min(shift) if min(shift) < 0 else 0
   axis_index = grid_params.get_axis_index(axis)
-  slice_size = array.shape[axis_index] - (abs(s_max) + abs(s_min))
+  slice_size = array.shape[axis_index] - (abs(s_max) + abs(s_min))  # pyrefly: ignore[bad-index]
 
   def _get_slice(s: int) -> jax.Array:
     return jax.lax.dynamic_slice_in_dim(
-        array, s_max - s, slice_size, axis=axis_index
+        array, s_max - s, slice_size, axis=axis_index  # pyrefly: ignore[bad-argument-type]
     )
 
   out = [c * _get_slice(s) for c, s in zip(coeff, shift)]
   out = jnp.sum(jnp.stack(out, axis=0), axis=0)
   npad = [(0, 0)] * array.ndim
-  npad[axis_index] = (s_max, -s_min)
+  npad[axis_index] = (s_max, -s_min)  # pyrefly: ignore[unsupported-operation]
   return jnp.pad(out, npad, 'constant')
 
 
@@ -488,8 +489,9 @@ def apply_convolutional_op(
     raise ValueError(
         f'Kernel must be a 3D array but its shape is {conv_op.shape}.'
     )
-  if array.shape[axis_index] % kernel_size[-1] != 0:
+  if array.shape[axis_index] % kernel_size[-1] != 0:  # pyrefly: ignore[bad-index]
     raise ValueError(
+        # pyrefly: ignore[bad-index]
         f'Kernel size must divide array size along axis={axis} evenly but'
         f' array size is {array.shape[axis_index]} and kernel size is'
         f' {kernel_size[-1]}.'
@@ -563,7 +565,7 @@ def global_mean(
   if partition_axis is None:
     partition_axis = mesh.axis_names
 
-  group_count = get_device_count_along_axes(mesh, partition_axis)
+  group_count = get_device_count_along_axes(mesh, partition_axis)  # pyrefly: ignore[bad-argument-type]
   array = strip_halos(
       array, halo_width_x, halo_width_y, halo_width_z, grid_params
   )
@@ -577,14 +579,14 @@ def global_mean(
   if axis is None:  # gets a scalar.
     local_sum = jnp.sum(array, list(range(3)), keepdims=False)
   else:
-    axis_index = grid_params.get_axis_index(axis)
+    axis_index = grid_params.get_axis_index(axis)  # pyrefly: ignore[bad-argument-type]
     local_sum = jnp.sum(array, axis_index, keepdims=True)
 
   global_sum = jax.lax.psum(local_sum, axis_name=partition_axis)
   # Divide by the dimension of the physical full grid along `axis`.
   if axis is None:
     axis = grid_params.data_axis_order
-  count = group_count * grid_size_local(array, grid_params.get_axis_index(axis))
+  count = group_count * grid_size_local(array, grid_params.get_axis_index(axis))  # pyrefly: ignore[bad-argument-type]
   return global_sum / count
 
 
@@ -767,9 +769,9 @@ def get_spectral_index_grid(
         gg_c, axis=[0, 1, 2]
     )
 
-  xx, xx_c = get_grid(grid_params.get_axis_index('x'))
-  yy, yy_c = get_grid(grid_params.get_axis_index('y'))
-  zz, zz_c = get_grid(grid_params.get_axis_index('z'))
+  xx, xx_c = get_grid(grid_params.get_axis_index('x'))  # pyrefly: ignore[bad-argument-type]
+  yy, yy_c = get_grid(grid_params.get_axis_index('y'))  # pyrefly: ignore[bad-argument-type]
+  zz, zz_c = get_grid(grid_params.get_axis_index('z'))  # pyrefly: ignore[bad-argument-type]
 
   return {
       'xx': xx,
@@ -805,7 +807,7 @@ def global_cumsum(
   def plane_index(idx: int) -> tuple[Any, ...]:
     """Generates the indices slice to get a plane from a 3D array at `idx`."""
     indices = [slice(0, None)] * 3
-    indices[axis_index] = idx
+    indices[axis_index] = idx  # pyrefly: ignore[unsupported-operation]
     return tuple(indices)
 
   def cumsum(g: jax.Array) -> jax.Array:
@@ -830,24 +832,24 @@ def global_cumsum(
       # So the final output of global_reduce will be
       # [shape[0], shape[1], REPLICAS] which contains the block-level sum
       # along `axis`.
-      g = jnp.transpose(jnp.squeeze(g, axis=axis_index + 1), perm)
+      g = jnp.transpose(jnp.squeeze(g, axis=axis_index + 1), perm)  # pyrefly: ignore[unsupported-operation]
 
-    return jnp.cumsum(g, axis=axis_index)
+    return jnp.cumsum(g, axis=axis_index)  # pyrefly: ignore[bad-argument-type]
 
-  iloc = jax.lax.axis_index(mesh.axis_names[axis_index])
+  iloc = jax.lax.axis_index(mesh.axis_names[axis_index])  # pyrefly: ignore[bad-index]
 
   local_cumsum = cumsum(array)
 
   replica_cumsum = apply_global_operator(
       jnp.expand_dims(local_cumsum[plane_index(-1)], axis=axis_index),
       cumsum,
-      (mesh.axis_names[axis_index],),
+      (mesh.axis_names[axis_index],),  # pyrefly: ignore[bad-index]
   )
   cumsum_from_0 = jnp.where(
       iloc == 0,
       local_cumsum,
       local_cumsum
-      + jnp.expand_dims(replica_cumsum[plane_index(iloc - 1)], axis=axis_index),  # pytype: disable=wrong-arg-types  # lax-types
+      + jnp.expand_dims(replica_cumsum[plane_index(iloc - 1)], axis=axis_index),  # pyrefly: ignore[bad-argument-type]  # lax-types
   )
   cumsum_to_end = (
       jnp.expand_dims(replica_cumsum[plane_index(-1)], axis=axis_index)
@@ -889,7 +891,7 @@ def integration_in_dim(
   def plane_index(idx: int) -> tuple[Any, ...]:
     """Generates the indices slice to get a plane from a 3D array at `idx`."""
     indices = [slice(0, None)] * 3
-    indices[axis_index] = idx
+    indices[axis_index] = idx  # pyrefly: ignore[unsupported-operation]
     return tuple(indices)
 
   cumsum_from_0, cumsum_to_end = global_cumsum(array, axis, mesh, grid_params)
@@ -897,10 +899,10 @@ def integration_in_dim(
   # Subtract half of the sum of the starting and end points of the cumulative
   # sum to conform with the trapezoidal rule of integral.
   global_lim_low = jax.lax.all_gather(
-      array[plane_index(0)], mesh.axis_names[axis_index]
+      array[plane_index(0)], mesh.axis_names[axis_index]  # pyrefly: ignore[bad-index]
   )[0, ...]
   global_lim_high = jax.lax.all_gather(
-      array[plane_index(-1)], mesh.axis_names[axis_index]
+      array[plane_index(-1)], mesh.axis_names[axis_index]  # pyrefly: ignore[bad-index]
   )[-1, ...]
 
   integral_from_0 = cumsum_from_0 - 0.5 * (
@@ -1000,16 +1002,51 @@ def get_face(
     the length - index'th plane is returned.
   """
   axis_index = grid_params.get_axis_index(axis)
-  n = value.shape[axis_index]
+  n = value.shape[axis_index]  # pyrefly: ignore[bad-index]
   start_idx = [0, 0, 0]
 
   if face == 0:  # low
-    start_idx[axis_index] = index
+    start_idx[axis_index] = index  # pyrefly: ignore[unsupported-operation]
   elif face == 1:  # high
-    start_idx[axis_index] = n - index - 1
+    start_idx[axis_index] = n - index - 1  # pyrefly: ignore[unsupported-operation]
   else:
     raise ValueError(f'`face` should be 0 or 1 but got {face}.')
 
   size = list(value.shape)
-  size[axis_index] = 1
+  size[axis_index] = 1  # pyrefly: ignore[unsupported-operation]
   return jnp.squeeze(jax.lax.dynamic_slice(value, start_idx, size))
+
+
+def slice_field(
+    f: ScalarField,
+    dim: int,
+    start_idx: int,
+    size: int | None = None,
+) -> ScalarField:
+  """Slices the input field along the given dimension.
+
+  Args:
+    f: A 3D array representing a field.
+    dim: The dimension of the plane to slice, should be one of 0, 1, and 2.
+    start_idx: The index of the first point in the slice. If negative, it will
+      be counted from the end of the field along `dim`.
+    size: The optional length of the slice along `dim`. If not provided, the
+      slice will run from `start_idx` to the end of the array.
+
+  Returns:
+    A slice of the input field with the specified range along `dim`.
+  """
+  shape = list(f.shape)
+  n = shape[dim]
+
+  if start_idx < 0:
+    start_idx = n + start_idx
+
+  if size is None:
+    size = n - start_idx
+
+  start = [0, 0, 0]
+  start[dim] = start_idx  # pyrefly: ignore[unsupported-operation]
+  slice_shape = list(shape)
+  slice_shape[dim] = size  # pyrefly: ignore[unsupported-operation]
+  return jax.lax.dynamic_slice(f, start, slice_shape)

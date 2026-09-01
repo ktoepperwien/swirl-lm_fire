@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ class LookupGasOpticsShortwave(gas_base.AbstractLookupGasOptics):
     return data
 
   @classmethod
-  def from_nc_file(
+  def from_nc_file(  # pyrefly: ignore[bad-override]
       cls, path: str
   ) -> 'LookupGasOpticsShortwave':
     """Instantiates a `LookupGasOpticsShortwave` object from zipped netCDF file.

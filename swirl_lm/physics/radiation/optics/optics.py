@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ class RRTMOptics(optics_base.OpticsScheme):
     """The actual optical_depth calculation as a graph."""
     logging.info('Calling optical depth graph.')
     lookup_gas_optics = self.gas_optics_lw if is_lw else self.gas_optics_sw
-    return (gas_optics.compute_minor_optical_depth(
-        lookup_gas_optics,
+    return (gas_optics.compute_minor_optical_depth(  # pyrefly: ignore[unsupported-operation]
+        lookup_gas_optics,  # pyrefly: ignore[bad-argument-type]
         self.vmr_lib,
         molecules,
         temperature,
@@ -92,7 +92,7 @@ class RRTMOptics(optics_base.OpticsScheme):
         igpt,
         vmr_fields,
     ) + gas_optics.compute_major_optical_depth(
-        lookup_gas_optics,
+        lookup_gas_optics,  # pyrefly: ignore[bad-argument-type]
         self.vmr_lib,
         molecules,
         temperature,
@@ -143,7 +143,7 @@ class RRTMOptics(optics_base.OpticsScheme):
     """The actual Rayleigh scattering calculation as a graph."""
     logging.info('Calling Rayleigh scattering graph.')
     return gas_optics.compute_rayleigh_optical_depth(
-        self.gas_optics_sw,
+        self.gas_optics_sw,  # pyrefly: ignore[bad-argument-type]
         self.vmr_lib,
         molecules,
         temperature,
@@ -185,7 +185,7 @@ class RRTMOptics(optics_base.OpticsScheme):
     """The actual Planck fraction calculation as a graph."""
     logging.info('Calling Planck fraction graph.')
     return gas_optics.compute_planck_fraction(
-        self.gas_optics_lw,
+        self.gas_optics_lw,  # pyrefly: ignore[bad-argument-type]
         self.vmr_lib,
         pressure,
         temperature,
@@ -224,7 +224,7 @@ class RRTMOptics(optics_base.OpticsScheme):
     """The actual Planck source calculation as a graph."""
     logging.info('Calling Planck source graph.')
     return gas_optics.compute_planck_sources(
-        self.gas_optics_lw,
+        self.gas_optics_lw,  # pyrefly: ignore[bad-argument-type]
         planck_fraction,
         temperature,
         igpt,
@@ -258,7 +258,7 @@ class RRTMOptics(optics_base.OpticsScheme):
     logging.info('Calling cloud optical properties graph.')
     cloud_lookup = self.cloud_optics_lw if is_lw else self.cloud_optics_sw
     return cloud_optics.compute_optical_properties(
-        cloud_lookup,
+        cloud_lookup,  # pyrefly: ignore[bad-argument-type]
         cloud_path_liq,
         cloud_path_ice,
         r_eff_liq,
@@ -319,7 +319,7 @@ class RRTMOptics(optics_base.OpticsScheme):
     # Extract a single argument variable and determine its type.
     single_input = [arg for arg in args if arg is not None][0]
     if isinstance(single_input, Dict):
-      single_input = single_input.values()[0]
+      single_input = single_input.values()[0]  # pyrefly: ignore[bad-index]
     field_is_tensor = isinstance(single_input, tf.Tensor)
 
     assert field_is_tensor or isinstance(
@@ -334,7 +334,7 @@ class RRTMOptics(optics_base.OpticsScheme):
     ) -> tf.Tensor | Dict[Any, tf.Tensor]:
       """Extracts the `tf.Tensor` or dictionary elements at index `i`."""
       if arg is None:
-        return None
+        return None  # pyrefly: ignore[bad-return]
       elif isinstance(arg, Dict):
         return {k: v[i] for k, v in arg.items()}
       elif isinstance(arg, Sequence):
@@ -342,7 +342,7 @@ class RRTMOptics(optics_base.OpticsScheme):
       else:
         raise ValueError(f'Unsupported nested input type: {type(arg)}')
 
-    n = len(single_input)
+    n = len(single_input)  # pyrefly: ignore[bad-argument-type]
     # Split arguments along z-list and apply the function to each level
     # separately.
     split_inputs = [[extract_arg(arg, i) for arg in args] for i in range(n)]
@@ -356,15 +356,15 @@ class RRTMOptics(optics_base.OpticsScheme):
     def delta_scale_tau(
         tau: tf.Tensor, ssa: tf.Tensor, g: tf.Tensor
     ) -> tf.Tensor:
-      wf = ssa * g**2
+      wf = ssa * g**2  # pyrefly: ignore[unsupported-operation]
       return (1.0 - wf) * tau
 
     def delta_scale_ssa(ssa: tf.Tensor, g: tf.Tensor) -> tf.Tensor:
-      wf = ssa * g**2
+      wf = ssa * g**2  # pyrefly: ignore[unsupported-operation]
       return (ssa - wf) / tf.maximum(self._EPSILON, 1.0 - wf)
 
     def delta_scale_asy(g: tf.Tensor) -> tf.Tensor:
-      f = g**2
+      f = g**2  # pyrefly: ignore[unsupported-operation]
       return (g - f) / tf.maximum(self._EPSILON, 1.0 - f)
 
     cloud_tau = tf.nest.map_structure(
@@ -411,7 +411,7 @@ class RRTMOptics(optics_base.OpticsScheme):
         else tf.nest.map_structure(tf.zeros_like, optical_props['ssa'])
         for x in cloud_states
     ]
-    ibnd = gas_lookup.g_point_to_bnd[igpt]
+    ibnd = gas_lookup.g_point_to_bnd[igpt]  # pyrefly: ignore[missing-attribute]
 
     compute_cloud_properties_fn = self.cloud_properties_fn(ibnd, is_lw)
 
@@ -478,7 +478,7 @@ class RRTMOptics(optics_base.OpticsScheme):
         molecules,
         temperature,
         pressure,
-        vmr_fields,
+        vmr_fields,  # pyrefly: ignore[bad-argument-type]
     )
     optical_depth_lw = typing.cast(FlowFieldVal, optical_depth_lw)
 
@@ -548,12 +548,12 @@ class RRTMOptics(optics_base.OpticsScheme):
         molecules,
         temperature,
         pressure,
-        vmr_fields,
+        vmr_fields,  # pyrefly: ignore[bad-argument-type]
     )
 
     rayl_fn = self.rayleigh_scattering_fn(igpt)
     rayleigh_scattering = self._map_fn(
-        rayl_fn, molecules, temperature, pressure, vmr_fields,
+        rayl_fn, molecules, temperature, pressure, vmr_fields,  # pyrefly: ignore[bad-argument-type]
     )
     optical_depth_sw = tf.nest.map_structure(
         tf.math.add, optical_depth_sw, rayleigh_scattering
@@ -622,7 +622,7 @@ class RRTMOptics(optics_base.OpticsScheme):
         self.planck_fraction_fn(igpt),
         pressure,
         temperature,
-        vmr_fields,
+        vmr_fields,  # pyrefly: ignore[bad-argument-type]
     )
 
     temperature_fields = {
@@ -645,7 +645,7 @@ class RRTMOptics(optics_base.OpticsScheme):
       return f1[0] if isinstance(f, tf.Tensor) or self._g_dim != 2 else f1
 
     if sfc_temperature is not None:
-      planck_fraction_0 = slice_bottom(planck_fraction)
+      planck_fraction_0 = slice_bottom(planck_fraction)  # pyrefly: ignore[bad-argument-type]
       planck_src_sfc = tf.nest.map_structure(
           planck_src_fn,
           planck_fraction_0,
@@ -666,17 +666,17 @@ class RRTMOptics(optics_base.OpticsScheme):
   @property
   def n_gpt_lw(self) -> int:
     """The number of g-points in the longwave bands."""
-    return self.gas_optics_lw.n_gpt
+    return self.gas_optics_lw.n_gpt  # pyrefly: ignore[missing-attribute]
 
   @property
   def n_gpt_sw(self) -> int:
     """The number of g-points in the shortwave bands."""
-    return self.gas_optics_sw.n_gpt
+    return self.gas_optics_sw.n_gpt  # pyrefly: ignore[missing-attribute]
 
   @property
   def solar_fraction_by_gpt(self) -> tf.Tensor:
     """Mapping from g-point to the fraction of total solar radiation."""
-    return self.gas_optics_sw.solar_src_scaled
+    return self.gas_optics_sw.solar_src_scaled  # pyrefly: ignore[missing-attribute]
 
 
 class GrayAtmosphereOptics(optics_base.OpticsScheme):
@@ -785,7 +785,7 @@ class GrayAtmosphereOptics(optics_base.OpticsScheme):
         'asymmetry_factor': tf.nest.map_structure(tf.zeros_like, optical_depth),
     }
 
-  def compute_planck_sources(
+  def compute_planck_sources(  # pyrefly: ignore[bad-override]
       self,
       replica_id: tf.Tensor,
       replicas: np.ndarray,
@@ -819,7 +819,7 @@ class GrayAtmosphereOptics(optics_base.OpticsScheme):
     del pressure
 
     def src_fn(t: tf.Tensor) -> tf.Tensor:
-      return constants.STEFAN_BOLTZMANN * t**4 / np.pi
+      return constants.STEFAN_BOLTZMANN * t**4 / np.pi  # pyrefly: ignore[unsupported-operation]
 
     temperature_bottom, temperature_top = self._reconstruct_face_values(
         replica_id, replicas, temperature,

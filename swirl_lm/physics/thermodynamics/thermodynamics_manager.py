@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ class ThermodynamicsManager(object):
       additional_states: Optional[FlowFieldMap] = None,
   ) -> FlowFieldVal:
     """Generates the reference pressure."""
-    return self.model.p_ref(zz, additional_states)
+    return self.model.p_ref(zz, additional_states)  # pyrefly: ignore[bad-argument-type]
 
   def update_density(
       self,

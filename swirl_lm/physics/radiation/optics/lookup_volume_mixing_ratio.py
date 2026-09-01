@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ class LookupVolumeMixingRatio:
         global_means=global_means,
         profiles=profiles,
     )
-    return cls(**kwargs)
+    return cls(**kwargs)  # pyrefly: ignore[bad-argument-type]
 
   def _vmr_interpolant_fn(
       self,

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -136,13 +136,13 @@ def apply_one_core_boundary_conditions(
       sign = (-1, 1)[side]
 
       if bc_type == BCType.DIRICHLET:
-        concat_plane = jnp.broadcast_to(bc_value, shape_with_axis_1d)
+        concat_plane = jnp.broadcast_to(bc_value, shape_with_axis_1d)  # pyrefly: ignore[bad-argument-type]
       elif bc_type == BCType.NEUMANN:
         neumann_slice = [slice(None)] * rank
         neumann_slice[axis] = (slice(0, 1), slice(-1, None))[side]
         neumann_plane = x_shaved[tuple(neumann_slice)]
         concat_plane = neumann_plane + sign * jnp.broadcast_to(
-            bc_value, shape_with_axis_1d
+            bc_value, shape_with_axis_1d  # pyrefly: ignore[bad-argument-type]
         )
       else:
         raise NotImplementedError(

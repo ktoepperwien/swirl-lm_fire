@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -121,7 +121,7 @@ def create_loader_from_pickle(
   source = CustomDataSource(u_bar=u_bar, u_half_p=u_half_p)
 
   data_loader = pygrain.load(
-      source=source,
+      source=source,  # pyrefly: ignore[bad-argument-type]
       num_epochs=num_epochs,
       shuffle=True,
       seed=seed,

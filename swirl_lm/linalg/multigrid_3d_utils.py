@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,13 +55,13 @@ def get_shape(x: Tiles) -> Tuple[int, int, int]:
   shape_dims_0_1 = x[0].shape
   if not isinstance(shape_dims_0_1, tuple):
     shape_dims_0_1 = shape_dims_0_1.as_list()
-  return (*shape_dims_0_1, shape_dim_2)
+  return (*shape_dims_0_1, shape_dim_2)  # pyrefly: ignore[bad-return]
 
 
 def stack(x: Tiles, axis: int = -1) -> TensorOrArray:
   """Stacks the list of tensors or arrays `x` along the given axis."""
   stack_fn = tf.stack if isinstance(x[0], tf.Tensor) else np.stack
-  return stack_fn(x, axis)
+  return stack_fn(x, axis)  # pyrefly: ignore[no-matching-overload]
 
 
 def unstack(x: TensorOrArray, axis: int = -1) -> Tiles:
@@ -150,8 +150,8 @@ def jacobi(x: Tiles,
 
   def body(x, i):
     update = [
-        weight * mask_xy * a_inv_diag for a_inv_diag in a_inv_diagonal(
-            [b_ - a_x for b_, a_x in zip(b, a_operator(x))])
+        weight * mask_xy * a_inv_diag for a_inv_diag in a_inv_diagonal(  # pyrefly: ignore[unsupported-operation]
+            [b_ - a_x for b_, a_x in zip(b, a_operator(x))])  # pyrefly: ignore[unsupported-operation]
     ]
     if do_not_change_borders:
       x = ([x[0]] + [x_ + u for x_, u in zip(x[1:-1], update[1:-1])] +
@@ -218,20 +218,20 @@ def laplacian_and_inv_diagonal_fns(
 
   def laplacian(x: Tiles) -> Tiles:
     roll = tf.roll if isinstance(x[0], tf.Tensor) else np.roll
-    lap = [diag * x_ for x_ in x]
+    lap = [diag * x_ for x_ in x]  # pyrefly: ignore[unsupported-operation]
     for i in range(len(x)):
       for jk in range(2):
         lap[i] += (
-            (roll(x[i], shift=1, axis=jk) + roll(x[i], shift=-1, axis=jk)) /
+            (roll(x[i], shift=1, axis=jk) + roll(x[i], shift=-1, axis=jk)) /  # pyrefly: ignore[no-matching-overload]
             dxs[jk]**2)
       if i > 0:
-        lap[i] += x[i - 1] / dxs[2]**2
+        lap[i] += x[i - 1] / dxs[2]**2  # pyrefly: ignore[unsupported-operation]
       if i < len(x) - 1:
-        lap[i] += x[i + 1] / dxs[2]**2
-    return lap
+        lap[i] += x[i + 1] / dxs[2]**2  # pyrefly: ignore[unsupported-operation]
+    return lap  # pyrefly: ignore[bad-return]
 
   def inv_diagonal(x: Tiles) -> Tiles:
-    return [x_ / diag for x_ in x]
+    return [x_ / diag for x_ in x]  # pyrefly: ignore[bad-return, unsupported-operation]
 
   return laplacian, inv_diagonal
 
@@ -288,7 +288,7 @@ def poisson_jacobi_step_fn(
 ) -> Callable[[tf.Tensor, np.ndarray], SmootherTypeFn]:
   """Returns a step fn for Poisson Jacobi (see `jacobi`)."""
   all_no_touch = multigrid_utils.boundary_conditions_all_no_touch(
-      boundary_conditions)
+      boundary_conditions)  # pyrefly: ignore[bad-argument-type]
 
   def step_fn(replica_id: tf.Tensor, replicas: np.ndarray):
     halo_exchange_fn = multigrid_utils.halo_exchange_step_fn(
@@ -333,7 +333,7 @@ def poisson_residual(
   laplacian, _ = laplacian_and_inv_diagonal_fns(full_grid_shape,
                                                 full_grid_lengths)
 
-  return [b_ - lap for b_, lap in zip(b, laplacian(x))]
+  return [b_ - lap for b_, lap in zip(b, laplacian(x))]  # pyrefly: ignore[unsupported-operation]
 
 
 def poisson_residual_norm(
@@ -346,7 +346,7 @@ def poisson_residual_norm(
                    for r in poisson_residual(x, b, params)][1:-1]
   norm = tf.norm if isinstance(x[0], tf.Tensor) else np.linalg.norm
 
-  return norm(stack(res_no_border, axis=0))
+  return norm(stack(res_no_border, axis=0))  # pyrefly: ignore[bad-argument-type, bad-return]
 
 
 def kronecker_products(ms: Sequence[TensorOrArray], x: Tiles) -> Tiles:
@@ -369,7 +369,7 @@ def kronecker_products(ms: Sequence[TensorOrArray], x: Tiles) -> Tiles:
   for i, m in enumerate(ms[:2]):
     if m is not None:
       indices = multigrid_utils.kronecker_einsum_indices(n=2, i=i)
-      x = [einsum(indices, m, x_) for x_ in x]
+      x = [einsum(indices, m, x_) for x_ in x]  # pyrefly: ignore[no-matching-overload]
 
   # Then dim 2 (the list dimension).
   mz = ms[2]
@@ -425,9 +425,9 @@ def get_apply_one_core_boundary_conditions_fn(
           tf.math.reduce_sum(x_2d[inner]) if use_tf else np.sum(x_2d[inner])
           for x_2d in x[1:-1]
       ])
-      inner_dof = np.prod([s - 2 for s in get_shape(x)])
+      inner_dof = np.prod([s - 2 for s in get_shape(x)])  # pyrefly: ignore[bad-argument-type]
       avg = inner_total / inner_dof
-      x = [x_2d - avg for x_2d in x]
+      x = [x_2d - avg for x_2d in x]  # pyrefly: ignore[unsupported-operation]
 
     return x
 

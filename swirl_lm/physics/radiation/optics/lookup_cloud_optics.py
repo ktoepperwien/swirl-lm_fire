@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -114,7 +114,7 @@ class LookupCloudOptics(loader.DataLoaderBase, metaclass=abc.ABCMeta):
     return data
 
   @classmethod
-  def from_nc_file(cls, path: str) -> 'LookupCloudOptics':
+  def from_nc_file(cls, path: str) -> 'LookupCloudOptics':  # pyrefly: ignore[bad-override]
     """Instantiates a `LookupCloudOptics` object from a netCDF file.
 
     The netCDF file should contain the lookup tables for the extinction

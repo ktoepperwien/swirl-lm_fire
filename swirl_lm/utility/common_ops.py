@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -176,7 +176,7 @@ def tensor_scatter_1d_update(
         updates, Sequence) else updates * tf.ones_like(tensor[index])
   else:
     if isinstance(updates, float):
-      updates = [
+      updates = [  # pyrefly: ignore[bad-assignment]
           updates,
       ] * nz
     tensor_updated = tf.nest.map_structure(update_tensor, tensor, updates)
@@ -458,7 +458,7 @@ def get_local_slice_of_1d_array(
   Returns:
     A 1D tensor representing the local slice of `v` in `core_id`.
   """
-  start = core_id * core_n
+  start = core_id * core_n  # pyrefly: ignore[unsupported-operation]
   end = start + n
   return v[start : end]
 
@@ -553,7 +553,7 @@ def group_replicas(
 
   if axis is None:
     # Returns a single group with all the replica id's.
-    return reshape(replicas, [1, -1])
+    return reshape(replicas, [1, -1])  # pyrefly: ignore[no-matching-overload]
 
   if isinstance(axis, int):
     axis = [axis]
@@ -564,8 +564,8 @@ def group_replicas(
 
   # Transpose `replicas` so the dimensions in `axis` occur last.
   remaining_axis = list(set([0, 1, 2]) - set(axis))
-  transpose_axes = remaining_axis + axis
-  transposed_replicas = transpose(replicas, transpose_axes)
+  transpose_axes = remaining_axis + axis  # pyrefly: ignore[unsupported-operation]
+  transposed_replicas = transpose(replicas, transpose_axes)  # pyrefly: ignore[no-matching-overload]
   # Flatten replica slices.
   slice_size = np.prod([replicas.shape[dim] for dim in axis])
   return reshape(transposed_replicas, [-1, slice_size])
@@ -675,7 +675,8 @@ def apply_op_z(
     shift: Sequence[int] | None = None,
 ) -> FlowFieldVal:
   """Apply op in z."""
-  if len(z_op_list) != len(shift):
+  if len(z_op_list) != len(shift):  # pyrefly: ignore[bad-argument-type]
+    # pyrefly: ignore[bad-argument-type]
     raise RuntimeError('apply_op_z requires z_op_list length ({}) be equal to '
                        'shift length ({}).'.format(len(z_op_list), len(shift)))
 
@@ -688,7 +689,7 @@ def apply_op_z(
           'greater than or equal to z_op_list length ({}).'.format(
               z_size, len(z_op_list)))
     result = tf.zeros_like(tile_list)
-    for s, op in zip(shift, z_op_list):
+    for s, op in zip(shift, z_op_list):  # pyrefly: ignore[bad-argument-type]
       paddings = [[max(0, -s), max(0, s)], [0, 0], [0, 0]]
       result += op * tf.pad(tile_list[max(0, s):z_size - max(0, -s), :, :],
                             paddings)
@@ -702,7 +703,7 @@ def apply_op_z(
                            z_len, len(z_op_list)))
 
   out_list = tf.nest.map_structure(tf.zeros_like, tile_list)
-  for s, op in zip(shift, z_op_list):
+  for s, op in zip(shift, z_op_list):  # pyrefly: ignore[bad-argument-type]
     for i in range(len(tile_list)):
       if i + s >= 0 and i + s < z_len:
         out_list[i] += op * tile_list[i + s]
@@ -973,7 +974,7 @@ def local_dot(
   Returns:
     The dot product of the two input vectors.
   """
-  return tf.math.reduce_sum(vec1 * vec2)
+  return tf.math.reduce_sum(vec1 * vec2)  # pyrefly: ignore[unsupported-operation]
 
 
 def local_vdot(
@@ -1212,7 +1213,7 @@ def compute_norm(
       norm = global_reduce(v, l1_norm_op, group_assignment)
     elif norm_type == NormType.L2:
       norm = tf.math.sqrt(
-          global_reduce(v * v, tf.math.reduce_sum, group_assignment))
+          global_reduce(v * v, tf.math.reduce_sum, group_assignment))  # pyrefly: ignore[unsupported-operation]
     elif norm_type == NormType.L_INF:
       l_inf_norm_op = lambda u: tf.math.reduce_max(tf.abs(u))
       norm = global_reduce(v, l_inf_norm_op, group_assignment)
@@ -1487,7 +1488,7 @@ def integration_in_dim(
       # global_reduce will just run tf.cumsum on this last tensor with axis=2.
       # So the final output of global_reduce will be [dim_z, dim_x, REPLICAS]
       # which contains the block-level integral along `axis`.
-      g = tf.transpose(tf.squeeze(g, axis=axis + 1), perm)
+      g = tf.transpose(tf.squeeze(g, axis=axis + 1), perm)  # pyrefly: ignore[unbound-name]
 
     return tf.cumsum(g, axis=axis)
 
@@ -1498,12 +1499,12 @@ def integration_in_dim(
   # across all replicas.
   replica_cumsum = global_reduce(
       tf.expand_dims(local_cumsum[plane_index(-1)], axis=axis), cumsum,
-      group_assignment)
+      group_assignment)  # pyrefly: ignore[bad-argument-type]
   cumsum_from_0 = tf.cond(
       pred=tf.equal(iloc, 0),
       true_fn=lambda: local_cumsum,
       false_fn=lambda: local_cumsum + tf.expand_dims(  # pylint: disable=g-long-lambda
-          replica_cumsum[plane_index(iloc - 1)],
+          replica_cumsum[plane_index(iloc - 1)],  # pyrefly: ignore[unsupported-operation]
           axis=axis))
   cumsum_to_end = tf.expand_dims(
       replica_cumsum[plane_index(-1)], axis=axis) - cumsum_from_0
@@ -1573,7 +1574,7 @@ def strip_halos(
   nx = f[0].get_shape().as_list()[0]
   ny = f[0].get_shape().as_list()[1]
   nz = len(f)
-  return [
+  return [  # pyrefly: ignore[bad-return]
       f[i][halos[0]:nx - halos[0], halos[1]:ny - halos[1]]
       for i in range(halos[2], nz - halos[2])
   ]
@@ -1686,7 +1687,7 @@ def gather_from_mask(x: tf.Tensor, mask: tf.Tensor) -> tf.Tensor:
   Raises:
     ValueError If the shapes of `x` and `mask` are different.
   """
-  return gather(x, tf.where(tf.less(tf.abs(mask - 1.0), 1e-6)))
+  return gather(x, tf.where(tf.less(tf.abs(mask - 1.0), 1e-6)))  # pyrefly: ignore[unsupported-operation]
 
 
 def scatter(
@@ -1739,7 +1740,7 @@ def scatter_to_mask(
     with all zeros will be returned.
   """
   return scatter(
-      x, tf.where(tf.less(tf.abs(mask - 1.0), 1e-6)), tf.shape(mask), dtype
+      x, tf.where(tf.less(tf.abs(mask - 1.0), 1e-6)), tf.shape(mask), dtype  # pyrefly: ignore[unsupported-operation]
   )
 
 
@@ -1773,7 +1774,7 @@ def pad(
               ] * paddings[2][0] if paddings[2][0] > 0 else []
   upper_pad = [value * tf.ones_like(padded[0])
               ] * paddings[2][1] if paddings[2][1] > 0 else []
-  return lower_pad + list(padded) + upper_pad
+  return lower_pad + list(padded) + upper_pad  # pyrefly: ignore[bad-return]
 
 
 def slice_field(

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ def _update_local_halos(value: FlowFieldVal, halo_width: int) -> FlowFieldVal:
     ]
     # pylint: enable=g-complex-comprehension
     return (
-        [value_xy_valid[0]] * halo_width
+        [value_xy_valid[0]] * halo_width  # pyrefly: ignore[bad-return]
         + value_xy_valid
         + [value_xy_valid[-1]] * halo_width
     )

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ class BaseJacobiSolver:
       self._kernel_op.add_kernel({'weighted_sum_121': ([1.0, 2.0, 1.0], 1)})
     elif isinstance(self._kernel_op, get_kernel_fn.ApplyKernelSliceOp):
       self._kernel_op.add_kernel(
-          {'weighted_sum_121': {'coeff': [1.0, 2.0, 1.0], 'shift': [-1, 0, 1]}}
+          {'weighted_sum_121': {'coeff': [1.0, 2.0, 1.0], 'shift': [-1, 0, 1]}}  # pyrefly: ignore[bad-argument-type]
       )
 
     self._omega = solver_option.jacobi.omega
@@ -161,13 +161,13 @@ class PlainPoisson(BaseJacobiSolver):
 
     p_terms = [None] * 3
     for axis in ('x', 'y', 'z'):
-      p_terms[self._grid_params.get_axis_index(axis)] = (
+      p_terms[self._grid_params.get_axis_index(axis)] = (  # pyrefly: ignore[unsupported-operation]
           self._kernel_op.apply_kernel_op(p, 'kS', axis)
       )
     p_jacobi = (
-        p_terms[0] / self._factors[0]
-        + p_terms[1] / self._factors[1]
-        + p_terms[2] / self._factors[2]
+        p_terms[0] / self._factors[0]  # pyrefly: ignore[unsupported-operation]
+        + p_terms[1] / self._factors[1]  # pyrefly: ignore[unsupported-operation]
+        + p_terms[2] / self._factors[2]  # pyrefly: ignore[unsupported-operation]
         - self._factor_b * rhs
     )
 
@@ -212,7 +212,7 @@ class VariableCoefficient(BaseJacobiSolver):
         axis_index = self._grid_params.get_axis_index(axis)
         kernel_op_sum += (
             0.5
-            * jnp.array(self._delta2_inv[axis_index], dtype=array.dtype)
+            * jnp.array(self._delta2_inv[axis_index], dtype=array.dtype)  # pyrefly: ignore[bad-index]
             * self._kernel_op.apply_kernel_op(array, kernel_name, axis)
         )
       return kernel_op_sum
@@ -282,37 +282,39 @@ class ThreeWeight(BaseJacobiSolver):
     )
 
   def _precompute_reciprocal_diagonal_factor(
-      self, w_x: ScalarFieldVal, w_y: ScalarFieldVal, w_z: ScalarFieldVal
+      self, w0: ScalarFieldVal, w1: ScalarFieldVal, w2: ScalarFieldVal
   ) -> ScalarFieldVal:
     """Computes the reciprocal diagonal factor for the 3-weight Poisson eqn."""
-    w_dict = {'x': w_x, 'y': w_y, 'z': w_z}
-    factor_diag = jnp.zeros_like(w_x)
+    axes = self._grid_params.data_axis_order
+    w_dict = {axes[0]: w0, axes[1]: w1, axes[2]: w2}
+    factor_diag = jnp.zeros_like(w0)
     for axis in ('x', 'y', 'z'):
       axis_index = self._grid_params.get_axis_index(axis)
       factor_diag += self._kernel_op_wrapper(
-          w_dict[axis], self._delta2_inv[axis_index], 'weighted_sum_121', axis
+          w_dict[axis], self._delta2_inv[axis_index], 'weighted_sum_121', axis  # pyrefly: ignore[bad-index]
       )
     return 1.0 / factor_diag
 
   def _precompute_off_diagonal_factor(
       self,
       p: ScalarFieldVal,
-      w_x: ScalarFieldVal,
-      w_y: ScalarFieldVal,
-      w_z: ScalarFieldVal,
+      w0: ScalarFieldVal,
+      w1: ScalarFieldVal,
+      w2: ScalarFieldVal,
       rhs: ScalarFieldVal,
   ) -> ScalarFieldVal:
     """Computes the off-diagonal factor for the 3-weight Poisson eqn."""
-    w_dict = {'x': w_x, 'y': w_y, 'z': w_z}
+    axes = self._grid_params.data_axis_order
+    w_dict = {axes[0]: w0, axes[1]: w1, axes[2]: w2}
     w_s_p_dict = {}
     s_w_p_dict = {}
     for axis in ('x', 'y', 'z'):
       axis_index = self._grid_params.get_axis_index(axis)
       w_s_p_dict[axis] = w_dict[axis] * self._kernel_op_wrapper(
-          p, self._delta2_inv[axis_index], 'kS', axis
+          p, self._delta2_inv[axis_index], 'kS', axis  # pyrefly: ignore[bad-index]
       )
       s_w_p_dict[axis] = self._kernel_op_wrapper(
-          w_dict[axis] * p, self._delta2_inv[axis_index], 'kS', axis
+          w_dict[axis] * p, self._delta2_inv[axis_index], 'kS', axis  # pyrefly: ignore[bad-index]
       )
     return (
         w_s_p_dict['x']
@@ -327,16 +329,16 @@ class ThreeWeight(BaseJacobiSolver):
   def _three_weight_poisson_step(
       self,
       p: ScalarFieldVal,
-      w_x: ScalarFieldVal,
-      w_y: ScalarFieldVal,
-      w_z: ScalarFieldVal,
+      w0: ScalarFieldVal,
+      w1: ScalarFieldVal,
+      w2: ScalarFieldVal,
       rhs: ScalarFieldVal,
       halo_update_fn: Callable[[ScalarFieldVal], ScalarFieldVal],
       reciprocal_diagonal_factor: ScalarFieldVal,
   ) -> ScalarFieldVal:
     """Performs one Jacobi iteration."""
     p = halo_update_fn(p)
-    numerator = self._precompute_off_diagonal_factor(p, w_x, w_y, w_z, rhs)
+    numerator = self._precompute_off_diagonal_factor(p, w0, w1, w2, rhs)
     return self._apply_underrelaxation(
         numerator * reciprocal_diagonal_factor, p
     )
@@ -344,9 +346,9 @@ class ThreeWeight(BaseJacobiSolver):
   def residual(
       self,
       p: ScalarFieldVal,
-      w_x: ScalarFieldVal,
-      w_y: ScalarFieldVal,
-      w_z: ScalarFieldVal,
+      w0: ScalarFieldVal,
+      w1: ScalarFieldVal,
+      w2: ScalarFieldVal,
       rhs: ScalarFieldVal,
   ) -> ScalarFieldVal:
     """Computes the residual (LHS - RHS) of the three-weight Poisson equation.
@@ -362,28 +364,28 @@ class ThreeWeight(BaseJacobiSolver):
 
     Args:
       p: The approximate solution to the Poisson equation.
-      w_x: The weighting coefficient for the x axis.
-      w_y: The weighting coefficient for the y axis.
-      w_z: The weighting coefficient for the z axis.
+      w0: The weighting coefficient for data_axis_order dim 0.
+      w1: The weighting coefficient for data_axis_order dim 1.
+      w2: The weighting coefficient for data_axis_order dim 2.
       rhs: The right hand side of the Poisson equation.
 
     Returns:
       The residual (LHS - RHS) of the Poisson equation.
     """
     reciprocal_diagonal_factor = self._precompute_reciprocal_diagonal_factor(
-        w_x, w_y, w_z
+        w0, w1, w2
     )
     diagonal_factor = 1 / reciprocal_diagonal_factor
     off_diagonal_factor = self._precompute_off_diagonal_factor(
-        p, w_x, w_y, w_z, rhs
+        p, w0, w1, w2, rhs
     )
     return -diagonal_factor * p + off_diagonal_factor
 
   def solve(
       self,
-      w_x: ScalarFieldVal,
-      w_y: ScalarFieldVal,
-      w_z: ScalarFieldVal,
+      w0: ScalarFieldVal,
+      w1: ScalarFieldVal,
+      w2: ScalarFieldVal,
       rhs: ScalarFieldVal,
       p0: ScalarFieldVal,
       halo_update_fn: _HaloUpdateFn,
@@ -391,9 +393,9 @@ class ThreeWeight(BaseJacobiSolver):
     """Solves the three-weight Poisson equation.
 
     Args:
-      w_x: The weighting coefficient for the x axis.
-      w_y: The weighting coefficient for the y axis.
-      w_z: The weighting coefficient for the z axis.
+      w0: The weighting coefficient for data_axis_order dim 0.
+      w1: The weighting coefficient for data_axis_order dim 1.
+      w2: The weighting coefficient for data_axis_order dim 2.
       rhs: The right-hand side of the Poisson equation.
       p0: The initial guess for the solution.
       halo_update_fn: A function that updates the halos and enforces boundary
@@ -403,13 +405,13 @@ class ThreeWeight(BaseJacobiSolver):
       A dictionary containing the solution and the number of iterations.
     """
     reciprocal_diagonal_factor = self._precompute_reciprocal_diagonal_factor(
-        w_x, w_y, w_z
+        w0, w1, w2
     )
     p_next_fn = functools.partial(
         self._three_weight_poisson_step,
-        w_x=w_x,
-        w_y=w_y,
-        w_z=w_z,
+        w0=w0,
+        w1=w1,
+        w2=w2,
         rhs=rhs,
         halo_update_fn=halo_update_fn,
         reciprocal_diagonal_factor=reciprocal_diagonal_factor,

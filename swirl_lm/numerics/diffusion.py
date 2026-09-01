@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -121,20 +121,20 @@ def diffusion_scalar(
       # Interpolate ρD onto faces in dimension `dim`.
       rho_d_face = interpolation.centered_node_to_face(rho_d, dim, kernel_op)
       # Compute ∂ϕ/∂x_j in dimension `dim` on faces.
-      dphi_face = deriv_lib.deriv_node_to_face(phi, dim, helper_variables)
+      dphi_face = deriv_lib.deriv_node_to_face(phi, dim, helper_variables)  # pyrefly: ignore[bad-argument-type]
       # Compute diffusive fluxes ρD ∂ϕ/∂x_j evaluated on faces.
       flux_face = multiply(rho_d_face, dphi_face)
       fluxes_face.append(flux_face)
 
     # Add the closure from Monin-Obukhov similarity theory if requested.
-    if most is not None and most.is_active_scalar(scalar_name):
+    if most is not None and most.is_active_scalar(scalar_name):  # pyrefly: ignore[bad-argument-type]
       required_variables = ('u', 'v', 'w', 'theta')
       for varname in required_variables:
-        if varname not in helper_variables:
+        if varname not in helper_variables:  # pyrefly: ignore[not-iterable]
           raise ValueError(f'{varname} is missing for the MOS model.')
 
       scalar_flux_helper_variables = {'rho': rho, 'phi': phi}
-      scalar_flux_helper_variables.update(helper_variables)
+      scalar_flux_helper_variables.update(helper_variables)  # pyrefly: ignore[no-matching-overload]
       q_3 = most.surface_flux_update_fn(scalar_flux_helper_variables,
                                         scalar_name)
 
@@ -178,7 +178,7 @@ def diffusion_scalar(
         if flux_info.WhichOneof('flux') == 'value':
           flux = flux_info.value
         else:
-          flux = helper_variables[flux_info.varname]
+          flux = helper_variables[flux_info.varname]  # pyrefly: ignore[unsupported-operation]
           assert isinstance(flux, tf.Tensor), (
               f'The diffusive flux {flux_info.varname} for {scalar_name} in'
               f' {flux_info.dim} has to be a tf.Tensor, but {type(flux)} is'
@@ -217,7 +217,7 @@ def diffusion_scalar(
     # Compute diffusion_terms = [∂/∂x(ρD ∂ϕ/∂x), ∂/∂y(ρD ∂ϕ/∂y), ∂/∂z(ρD ∂ϕ/∂z)]
     # evaluated on nodes.
     diffusion_terms = [
-        deriv_lib.deriv_face_to_node(fluxes_face[dim], dim, helper_variables)
+        deriv_lib.deriv_face_to_node(fluxes_face[dim], dim, helper_variables)  # pyrefly: ignore[bad-argument-type]
         for dim in (0, 1, 2)
     ]
 
@@ -434,7 +434,7 @@ def diffusion_momentum(
           key: [diffusion_fn_1d(key, i) for i in range(3)]
           for key in common.KEYS_VELOCITY
       }
-      return diff
+      return diff  # pyrefly: ignore[bad-return]
     elif scheme == numerics_pb2.DiffusionScheme.DIFFUSION_SCHEME_CENTRAL_3:
       # Compute the stress tensor 𝜏ᵢⱼ, evaluated on faces in dim j.
       tau = shear_flux_fn_stencil_3(
@@ -466,7 +466,7 @@ def diffusion_momentum(
           v=(tau_deriv('v', 0), tau_deriv('v', 1), tau_deriv('v', 2)),
           w=(tau_deriv('w', 0), tau_deriv('w', 1), tau_deriv('w', 2)),
       )
-      return diff
+      return diff  # pyrefly: ignore[bad-return]
     elif scheme == numerics_pb2.DiffusionScheme.DIFFUSION_SCHEME_STENCIL_3:
       return _diffusion_momentum_stencil_3(
           kernel_op, mu, grid_spacing, states

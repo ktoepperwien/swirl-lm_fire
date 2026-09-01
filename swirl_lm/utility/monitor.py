@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -242,7 +242,7 @@ class Monitor(object):
       dt, simulation_time = dt_and_simulation_time
       valid_duration = tf.cast(
           simulation_time - self._averaging_start_seconds + dt, dtype=_TF_DTYPE)
-      statistic = prev_stat + (statistic - prev_stat) * dt / valid_duration
+      statistic = prev_stat + (statistic - prev_stat) * dt / valid_duration  # pyrefly: ignore[unsupported-operation]
       return statistic
 
     monitor_vars = {}

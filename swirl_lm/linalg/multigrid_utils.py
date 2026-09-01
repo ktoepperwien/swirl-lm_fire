@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -111,8 +111,8 @@ def zero_borders(x: TensorOrArray) -> TensorOrArray:
 def add_borders(x: TensorOrArray, y: TensorOrArray) -> TensorOrArray:
   """Returns `x` with the borders of `y` added."""
   ones_like = tf.ones_like if isinstance(x, tf.Tensor) else np.ones_like
-  mask = 1 - zero_borders(ones_like(x))
-  return x + mask * y
+  mask = 1 - zero_borders(ones_like(x))  # pyrefly: ignore[unsupported-operation]
+  return x + mask * y  # pyrefly: ignore[bad-return, unsupported-operation]
 
 
 def get_homogeneous_boundary_conditions(
@@ -186,7 +186,10 @@ def boundary_conditions_all_one_type(
   if boundary_conditions is None:
     return False
   for bcs_per_dim in boundary_conditions:
-    for bc_type, _ in bcs_per_dim:
+    for bc_per_dim in bcs_per_dim:  # pyrefly: ignore[not-iterable]
+      if bc_per_dim is None:
+        raise ValueError('A Boundary condition is None.')
+      bc_type, _ = bc_per_dim
       if bc_type != boundary_condition_type:
         return False
   return True
@@ -257,7 +260,7 @@ def jacobi(
     mask = zero_borders(ones_like(x))
 
   def body(x, i):
-    update = weight * mask * a_inv_diagonal(b - a_operator(x))
+    update = weight * mask * a_inv_diagonal(b - a_operator(x))  # pyrefly: ignore[unsupported-operation]
     x += update
     if halo_exchange_fn:
       x = halo_exchange_fn(x)
@@ -318,14 +321,14 @@ def laplacian_and_inv_diagonal_fns(
 
   def laplacian(x: TensorOrArray) -> TensorOrArray:
     roll = tf.roll if isinstance(x, tf.Tensor) else np.roll
-    lap = diag * x
+    lap = diag * x  # pyrefly: ignore[unsupported-operation]
     for i in range(rank):
-      lap += ((roll(x, shift=1, axis=i) + roll(x, shift=-1, axis=i))
+      lap += ((roll(x, shift=1, axis=i) + roll(x, shift=-1, axis=i))  # pyrefly: ignore[no-matching-overload]
               / dxs[i]**2)
-    return lap
+    return lap  # pyrefly: ignore[bad-return]
 
   def inv_diagonal(x: TensorOrArray) -> TensorOrArray:
-    return x / diag
+    return x / diag  # pyrefly: ignore[bad-return, unsupported-operation]
 
   return laplacian, inv_diagonal
 
@@ -382,7 +385,7 @@ def poisson_jacobi_step_fn(
     boundary_conditions: Optional[BoundaryConditionsSpec] = None
 ) -> Callable[[tf.Tensor, np.ndarray], SmootherTypeFn]:
   """Returns a step fn for Poisson Jacobi (see `jacobi`)."""
-  all_no_touch = boundary_conditions_all_no_touch(boundary_conditions)
+  all_no_touch = boundary_conditions_all_no_touch(boundary_conditions)  # pyrefly: ignore[bad-argument-type]
 
   def step_fn(replica_id: tf.Tensor, replicas: np.ndarray):
     halo_exchange_fn = halo_exchange_step_fn(
@@ -431,7 +434,7 @@ def poisson_residual(
   laplacian, _ = laplacian_and_inv_diagonal_fns(full_grid_shape,
                                                 full_grid_lengths)
 
-  return b - laplacian(x)
+  return b - laplacian(x)  # pyrefly: ignore[unsupported-operation]
 
 
 def poisson_residual_norm(
@@ -446,11 +449,11 @@ def poisson_residual_norm(
   res_no_border = poisson_residual(x, b, params, full_grids)[inner]
   if isinstance(x, tf.Tensor):
     return tf.norm(res_no_border)
-  return np.linalg.norm(res_no_border)
+  return np.linalg.norm(res_no_border)  # pyrefly: ignore[bad-return]
 
 
 def prolong_matrix(n2: int, n1: Optional[int] = None,  # pytype: disable=annotation-type-mismatch  # numpy-scalars
-                   dtype: np.dtype = _NP_DTYPE) -> np.ndarray:
+                   dtype: np.dtype = _NP_DTYPE) -> np.ndarray:  # pyrefly: ignore[bad-function-definition]
   """Returns a prolongation matrix (2D numpy array).
 
   Returns an `n2 x n1` prolongation matrix. If `v` is a vector of length `n1`,
@@ -505,7 +508,7 @@ def _restrict_matrix_from_prolong(p: np.ndarray) -> np.ndarray:
 
 
 def restrict_matrix(n2: int, n1: Optional[int] = None,  # pytype: disable=annotation-type-mismatch  # numpy-scalars
-                    dtype: np.dtype = _NP_DTYPE) -> np.ndarray:
+                    dtype: np.dtype = _NP_DTYPE) -> np.ndarray:  # pyrefly: ignore[bad-function-definition]
   """Returns a restriction matrix from `n2` to `n1`. See `prolong_matrix`."""
   return _restrict_matrix_from_prolong(prolong_matrix(n2, n1, dtype))
 
@@ -531,7 +534,7 @@ def _grid_sizes(n2: int, n1: int) -> List[Tuple[int, int]]:
 
 
 def _prolong_matrices(n2: int, n1: int,  # pytype: disable=annotation-type-mismatch  # numpy-scalars
-                      dtype: np.dtype = _NP_DTYPE) -> List[np.ndarray]:
+                      dtype: np.dtype = _NP_DTYPE) -> List[np.ndarray]:  # pyrefly: ignore[bad-function-definition]
   """Returns a sequence of prolongation matrices from `n2` to `n1`."""
   return [prolong_matrix(m2, m1, dtype) for m2, m1 in _grid_sizes(n2, n1)]
 
@@ -671,7 +674,7 @@ def full_1d_grid_size_pairs(
 def prolong_restrict_matrices_from_params(  # pytype: disable=annotation-type-mismatch  # numpy-scalars
     params: grid_parametrization.GridParametrization,
     coarsest_subgrid_shape: Optional[Sequence[int]] = None,
-    dtype: np.dtype = _NP_DTYPE
+    dtype: np.dtype = _NP_DTYPE  # pyrefly: ignore[bad-function-definition]
 ) -> ProlongRestrictMatrices:
   """Returns nested lists of prolongation and restriction matrices.
 
@@ -710,9 +713,9 @@ def prolong_restrict_matrices_from_params(  # pytype: disable=annotation-type-mi
   # in case of halo width larger than 1, the solver is still called with an
   # adaptation step to keep only a single halo layer. So here the
   # `full_grid_shape` is calculated with a fixed halo width of 1.
-  full_grid_shape = (params.core_nx * params.cx + 2,
-                     params.core_ny * params.cy + 2,
-                     params.core_nz * params.cz + 2)
+  full_grid_shape = (params.core_nx * params.cx + 2,  # pyrefly: ignore[unsupported-operation]
+                     params.core_ny * params.cy + 2,  # pyrefly: ignore[unsupported-operation]
+                     params.core_nz * params.cz + 2)  # pyrefly: ignore[unsupported-operation]
   computation_shape = params.cx, params.cy, params.cz
 
   return prolong_restrict_matrices_from_shapes(full_grid_shape,
@@ -725,7 +728,7 @@ def prolong_restrict_matrices_from_shapes(  # pytype: disable=annotation-type-mi
     full_grid_shape: Sequence[int],
     coarsest_subgrid_shape: Sequence[int],
     computation_shape: Sequence[int],
-    dtype: np.dtype = _NP_DTYPE) -> ProlongRestrictMatrices:
+    dtype: np.dtype = _NP_DTYPE) -> ProlongRestrictMatrices:  # pyrefly: ignore[bad-function-definition]
   """Returns a set of prolongation and restriction matrices.
 
   See `prolong_restrict_matrices_from_params`.
@@ -754,8 +757,8 @@ def prolong_restrict_matrices_from_shapes(  # pytype: disable=annotation-type-mi
         pss.append(None)
         rss.append(None)
       else:
-        pss.append(prolong_matrix(*f2f1, dtype))
-        rss.append(restrict_matrix(*f2f1, dtype))
+        pss.append(prolong_matrix(*f2f1, dtype))  # pyrefly: ignore[bad-argument-count, bad-argument-type]
+        rss.append(restrict_matrix(*f2f1, dtype))  # pyrefly: ignore[bad-argument-count, bad-argument-type]
     ps.append(pss)
     rs.append(rss)
 
@@ -801,7 +804,7 @@ def convert_ps_rs_dict_to_tuple(
 
 def get_ps_rs_init_fn(params: grid_parametrization.GridParametrization,  # pytype: disable=annotation-type-mismatch  # numpy-scalars
                       coarsest_subgrid_shape: Optional[Sequence[int]] = None,
-                      dtype: np.dtype = _NP_DTYPE):
+                      dtype: np.dtype = _NP_DTYPE):  # pyrefly: ignore[bad-function-definition]
   """Returns an init function for prolongation and restriction matrices.
 
   The returned function, when called, returns a dictionary with keys `ps` and
@@ -890,7 +893,7 @@ def get_full_grids_init_fn(
   if a_operator is None:
     a_operator = laplacian_and_inv_diagonal_fns(
         full_grid_shape, full_grid_lengths)[0]
-  b_minus_a_xb = b - a_operator(xb)
+  b_minus_a_xb = b - a_operator(xb)  # pyrefly: ignore[unsupported-operation]
 
   def subgrid_of_3d_grid(full_3d_grid, coordinates):
     """Retrieves the subgrid in the partition specified by `coordinates`."""
@@ -1014,7 +1017,7 @@ def kronecker_products(ms: Sequence[Optional[TensorOrArray]],
   for i, m in enumerate(ms):
     if m is not None:
       indices = kronecker_einsum_indices(rank, i)
-      x = einsum(indices, m, x)
+      x = einsum(indices, m, x)  # pyrefly: ignore[no-matching-overload]
   return x
 
 
@@ -1022,7 +1025,7 @@ def laplacian_matrix(  # pytype: disable=annotation-type-mismatch  # numpy-scala
     shape: Sequence[int],
     grid_lengths: Optional[Sequence[float]] = None,
     boundary_conditions: Optional[BoundaryConditionsSpec] = None,
-    dtype: np.dtype = _NP_DTYPE) -> np.ndarray:
+    dtype: np.dtype = _NP_DTYPE) -> np.ndarray:  # pyrefly: ignore[bad-function-definition]
   """Returns the Laplacian 2D matrix for a vector of the given shape.
 
   Only Dirichlet and Neumann boundary conditions are supported. If boundary
@@ -1047,7 +1050,7 @@ def laplacian_matrix(  # pytype: disable=annotation-type-mismatch  # numpy-scala
 
     for bc in boundary_conditions:
       if not bc: continue
-      bc_types = [b[0] for b in bc]
+      bc_types = [b[0] for b in bc]  # pyrefly: ignore[unsupported-operation]
       if any([t not in allowed_bc_types for t in bc_types]):
         return False
 
@@ -1102,9 +1105,9 @@ def laplacian_matrix(  # pytype: disable=annotation-type-mismatch  # numpy-scala
       if border_row_type == SideType.NONE: continue
       a[n, :] = 0
       if ((border_row_type == SideType.LOW and
-           boundary_conditions[dim][0][0] == BCType.DIRICHLET) or
+           boundary_conditions[dim][0][0] == BCType.DIRICHLET) or  # pyrefly: ignore[unsupported-operation]
           (border_row_type == SideType.HIGH and
-           boundary_conditions[dim][1][0] == BCType.DIRICHLET)):  # DIRICHLET
+           boundary_conditions[dim][1][0] == BCType.DIRICHLET)):  # DIRICHLET  # pyrefly: ignore[unsupported-operation]
         a[n, n] = 1
       elif border_row_type == SideType.LOW:  # NEUMANN LOW.
         a[n, n] = -1
@@ -1122,7 +1125,7 @@ def inverse_laplacian_matrix(  # pytype: disable=annotation-type-mismatch  # num
     shape: Sequence[int],
     grid_lengths: Optional[Sequence[float]] = None,
     boundary_conditions: Optional[BoundaryConditionsSpec] = None,
-    dtype: np.dtype = _NP_DTYPE,
+    dtype: np.dtype = _NP_DTYPE,  # pyrefly: ignore[bad-function-definition]
     use_pinv: bool = False) -> np.ndarray:
   """Returns the inverse Laplacian matrix for the given boundary conditions.
 
@@ -1143,7 +1146,7 @@ def inverse_laplacian_matrix(  # pytype: disable=annotation-type-mismatch  # num
   lap = laplacian_matrix(shape, grid_lengths, boundary_conditions, dtype)
   # `pinv` needs to be used in the all-Neumann case. In all other cases, `inv`
   # is used. It can be more accurate.
-  if use_pinv or boundary_conditions_all_neumann(boundary_conditions):
+  if use_pinv or boundary_conditions_all_neumann(boundary_conditions):  # pyrefly: ignore[bad-argument-type]
     return sp.linalg.pinv(lap)
   else:
     return sp.linalg.inv(lap)
@@ -1155,7 +1158,7 @@ def solve(a: TensorOrArray, b: TensorOrArray) -> TensorOrArray:
   reshape, solve_fn = ((np.reshape, sp.linalg.solve)
                        if isinstance(b, np.ndarray)
                        else (tf.reshape, tf.linalg.solve))
-  return reshape(solve_fn(a, reshape(b, [-1, 1])), shape)
+  return reshape(solve_fn(a, reshape(b, [-1, 1])), shape)  # pyrefly: ignore[no-matching-overload]
 
 
 def matmul(a: TensorOrArray, x: TensorOrArray) -> TensorOrArray:
@@ -1196,7 +1199,7 @@ def halo_exchange_step_fn(
           tf.compat.v1.tpu.cross_replica_sum(single_tensor)) / num_dof
       tiles = [t - avg for t in tiles]
 
-    return tf.stack(tiles, axis=-1) if is_tensor else tiles
+    return tf.stack(tiles, axis=-1) if is_tensor else tiles  # pyrefly: ignore[bad-return]
 
   return halo_exchange_fn
 
@@ -1292,9 +1295,9 @@ def get_multigrid_helper_var_keys(
   # adaptation step to keep only a single halo layer. So here the
   # `full_grid_shape` is calculated with a fixed halo width of 1.
   full_grid_shape = (
-      params.core_nx * params.cx + 2,
-      params.core_ny * params.cy + 2,
-      params.core_nz * params.cz + 2,
+      params.core_nx * params.cx + 2,  # pyrefly: ignore[unsupported-operation]
+      params.core_ny * params.cy + 2,  # pyrefly: ignore[unsupported-operation]
+      params.core_nz * params.cz + 2,  # pyrefly: ignore[unsupported-operation]
   )
   computation_shape = params.cx, params.cy, params.cz
   coarsest_subgrid_shape = (
@@ -1367,4 +1370,4 @@ def get_multigrid_helper_var_init_fn(
 
     return helper_var
 
-  return multigrid_helper_var_init_fn
+  return multigrid_helper_var_init_fn  # pyrefly: ignore[bad-return]

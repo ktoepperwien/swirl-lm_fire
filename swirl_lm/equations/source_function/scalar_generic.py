@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ class ScalarGeneric(abc.ABC):
     """Determines the momentum to be used to compute the convection term."""
     del phi, additional_states
 
-    return tuple(states[key] for key in common.KEYS_MOMENTUM)
+    return tuple(states[key] for key in common.KEYS_MOMENTUM)  # pyrefly: ignore[bad-return]
 
   def _get_scalar_for_convection(
       self,
@@ -259,7 +259,7 @@ class ScalarGeneric(abc.ABC):
           self._params.dt,
           dim,
           helper_variables,
-          bc_types=tuple(self._bc_types[dim]),
+          bc_types=tuple(self._bc_types[dim]),  # pyrefly: ignore[bad-argument-type]
           varname=momentum_component,
           halo_width=self._params.halo_width,
           scheme=self._scalar_params.scheme,

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ def perturbed_constant_init_fn(
     return tf.compat.v1.where(
         tf.less(height, cloud_base), pert_val, mean_val)
 
-  return init_fn
+  return init_fn  # pyrefly: ignore[bad-return]
 
 
 def reorder_vertical_horizontal_coordinates_to_xyz(
@@ -117,8 +117,8 @@ def reorder_vertical_horizontal_coordinates_to_xyz(
   del horizontal_dims[vertical_dim]
 
   coordinates = [None, None, None]
-  coordinates[vertical_dim] = vertical
-  coordinates[horizontal_dims[0]] = horizontal_0
-  coordinates[horizontal_dims[1]] = horizontal_1
+  coordinates[vertical_dim] = vertical  # pyrefly: ignore[unsupported-operation]
+  coordinates[horizontal_dims[0]] = horizontal_0  # pyrefly: ignore[unsupported-operation]
+  coordinates[horizontal_dims[1]] = horizontal_1  # pyrefly: ignore[unsupported-operation]
 
   return tuple(coordinates)

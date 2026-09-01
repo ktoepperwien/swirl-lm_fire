@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -129,7 +129,7 @@ class MonochromaticTwoStreamSolver:
       input `planck_srcs`.
     """
     def geometric_mean(a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-      return tf.math.sqrt(a * b)
+      return tf.math.sqrt(a * b)  # pyrefly: ignore[unsupported-operation]
 
     planck_src_top = planck_srcs['planck_src_top']
     planck_src_bottom = planck_srcs['planck_src_bottom']
@@ -147,7 +147,7 @@ class MonochromaticTwoStreamSolver:
   def _k_fn(self, gamma1: tf.Tensor, gamma2: tf.Tensor):
     """Computes the k parameter used in the transmittance."""
     k = tf.math.sqrt(
-        tf.maximum((gamma1 + gamma2) * (gamma1 - gamma2), _EPSILON)
+        tf.maximum((gamma1 + gamma2) * (gamma1 - gamma2), _EPSILON)  # pyrefly: ignore[unsupported-operation]
     )
     return tf.maximum(k, _K_MIN)
 
@@ -244,8 +244,8 @@ class MonochromaticTwoStreamSolver:
     # refactored to avoid rounding errors when k, gamma1 are of very different
     # magnitudes.
     k = self._k_fn(gamma1, gamma2)
-    return k * (1 + tf.math.exp(-2.0 * tau * k)) + gamma1 * (
-        1 - tf.math.exp(-2.0 * tau * k)
+    return k * (1 + tf.math.exp(-2.0 * tau * k)) + gamma1 * (  # pyrefly: ignore[unsupported-operation]
+        1 - tf.math.exp(-2.0 * tau * k)  # pyrefly: ignore[unsupported-operation]
     )
 
   def _diffuse_reflectance(
@@ -254,7 +254,7 @@ class MonochromaticTwoStreamSolver:
     """The diffuse reflectance (equation 25 of Meador and Weaver (1980))."""
     k = self._k_fn(gamma1, gamma2)
     denom = self._rt_denominator_diffuse(gamma1, gamma2, tau)
-    return gamma2 * (1.0 - tf.math.exp(-2.0 * tau * k)) / denom
+    return gamma2 * (1.0 - tf.math.exp(-2.0 * tau * k)) / denom  # pyrefly: ignore[unsupported-operation]
 
   def _diffuse_transmittance(
       self, gamma1: tf.Tensor, gamma2: tf.Tensor, tau: tf.Tensor
@@ -295,11 +295,11 @@ class MonochromaticTwoStreamSolver:
     """
     def gamma1_fn(ssa: tf.Tensor, asymmetry_factor: tf.Tensor) -> tf.Tensor:
       """The coefficient of the parallel irradiance in the 2-stream RTE."""
-      return _LW_DIFFUSIVE_FACTOR * (1 - 0.5 * ssa * (1.0 + asymmetry_factor))
+      return _LW_DIFFUSIVE_FACTOR * (1 - 0.5 * ssa * (1.0 + asymmetry_factor))  # pyrefly: ignore[bad-return, unsupported-operation]
 
     def gamma2_fn(ssa: tf.Tensor, asymmetry_factor: tf.Tensor) -> tf.Tensor:
       """The coefficient of the antiparallel irradiance in the 2-stream RTE."""
-      return _LW_DIFFUSIVE_FACTOR * 0.5 * ssa * (1.0 - asymmetry_factor)
+      return _LW_DIFFUSIVE_FACTOR * 0.5 * ssa * (1.0 - asymmetry_factor)  # pyrefly: ignore[bad-return, unsupported-operation]
 
     gamma1 = tf.nest.map_structure(gamma1_fn, ssa, asymmetry_factor)
     gamma2 = tf.nest.map_structure(gamma2_fn, ssa, asymmetry_factor)
@@ -361,7 +361,7 @@ class MonochromaticTwoStreamSolver:
         given face sources [W / m^2].
       """
       src = math.pi * (
-          downstream_out - refl * downstream_in - tran * upstream_in
+          downstream_out - refl * downstream_in - tran * upstream_in  # pyrefly: ignore[unsupported-operation]
       )
       # Filter out sources where the optical depth is too small.
       return tf.where(
@@ -420,16 +420,16 @@ class MonochromaticTwoStreamSolver:
       'r_dir': A 3D variable containing the direct reflectance.
     """
     def gamma1_fn(ssa: tf.Tensor, g: tf.Tensor) -> tf.Tensor:
-      return (8.0 - ssa * (5.0 + 3.0 * g)) * 0.25
+      return (8.0 - ssa * (5.0 + 3.0 * g)) * 0.25  # pyrefly: ignore[bad-return, unsupported-operation]
 
     def gamma2_fn(ssa: tf.Tensor, g: tf.Tensor) -> tf.Tensor:
-      return 3.0 * ssa * (1.0 - g) * 0.25
+      return 3.0 * ssa * (1.0 - g) * 0.25  # pyrefly: ignore[bad-return, unsupported-operation]
 
     def gamma3_fn(g: tf.Tensor) -> tf.Tensor:
       return (2.0 - 3.0 * tf.math.cos(zenith) * g) * 0.25
 
     def gamma4_fn(g: tf.Tensor) -> tf.Tensor:
-      return 1.0 - gamma3_fn(g)
+      return 1.0 - gamma3_fn(g)  # pyrefly: ignore[bad-return, unsupported-operation]
 
     def alpha1_fn(
         gamma1: tf.Tensor,
@@ -437,7 +437,7 @@ class MonochromaticTwoStreamSolver:
         gamma3: tf.Tensor,
         gamma4: tf.Tensor,
     ) -> tf.Tensor:
-      return gamma1 * gamma4 + gamma2 * gamma3
+      return gamma1 * gamma4 + gamma2 * gamma3  # pyrefly: ignore[unsupported-operation]
 
     def alpha2_fn(
         gamma1: tf.Tensor,
@@ -445,7 +445,7 @@ class MonochromaticTwoStreamSolver:
         gamma3: tf.Tensor,
         gamma4: tf.Tensor,
     ) -> tf.Tensor:
-      return gamma1 * gamma3 + gamma2 * gamma4
+      return gamma1 * gamma3 + gamma2 * gamma4  # pyrefly: ignore[unsupported-operation]
 
     # Exchange rate coefficients from Zdunkowski et al. (1980).
     gamma1 = tf.nest.map_structure(gamma1_fn, ssa, asymmetry_factor)
@@ -491,11 +491,11 @@ class MonochromaticTwoStreamSolver:
 
     def constrain_r_dir(t0: tf.Tensor, r_dir: tf.Tensor):
       """Equation 9 of Hogan and Ukonnen (2024)."""
-      return tf.clip_by_value(r_dir, 0.0, 1.0 - t0)
+      return tf.clip_by_value(r_dir, 0.0, 1.0 - t0)  # pyrefly: ignore[unsupported-operation]
 
     def constrain_t_dir(t0: tf.Tensor, r_dir: tf.Tensor, t_dir: tf.Tensor):
       """Equation 10 of Hogan and Ukonnen (2024)."""
-      return tf.clip_by_value(t_dir, 0.0, 1.0 - t0 - r_dir)
+      return tf.clip_by_value(t_dir, 0.0, 1.0 - t0 - r_dir)  # pyrefly: ignore[unsupported-operation]
 
     r_dir = tf.nest.map_structure(
         constrain_r_dir, t0, r_dir_unconstrained
@@ -618,7 +618,7 @@ class MonochromaticTwoStreamSolver:
     def sfc_src_fn(flux_dn_0: tf.Tensor, sfc_albedo: tf.Tensor) -> tf.Tensor:
       return tf.cond(
           pred=tf.equal(core_idx, 0),
-          true_fn=lambda: flux_dn_0 * sfc_albedo,
+          true_fn=lambda: flux_dn_0 * sfc_albedo,  # pyrefly: ignore[unsupported-operation]
           false_fn=lambda: tf.zeros_like(flux_dn_0),
       )
 
@@ -737,8 +737,8 @@ class MonochromaticTwoStreamSolver:
       """Recurrent formula for albedo solution unraveling from the surface."""
       albedo_below = x0
       # Geometric series solution accounting for infinite reflection events.
-      beta = tf.math.reciprocal(1.0 - r_diff * albedo_below)
-      return r_diff + t_diff**2 * beta * albedo_below
+      beta = tf.math.reciprocal(1.0 - r_diff * albedo_below)  # pyrefly: ignore[unsupported-operation]
+      return r_diff + t_diff**2 * beta * albedo_below  # pyrefly: ignore[unsupported-operation]
 
     albedo_vars = {
         'r_diff': r_diff,

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -191,7 +191,7 @@ def pair_distance_with_tol(
   lhs = halo_exchange.clear_halos(lhs, halo_width)
   rhs = halo_exchange.clear_halos(rhs, halo_width)
 
-  diff = lhs - rhs
+  diff = lhs - rhs  # pyrefly: ignore[unsupported-operation]
 
   num_replicas = np.prod(replicas.shape)
   group_assignment = np.array([range(num_replicas)], dtype=np.int32)

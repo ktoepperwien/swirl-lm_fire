@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,12 +61,12 @@ class DistTurbulenceSynthesizer(object):
     self._cx = params.cx
     self._cy = params.cy
     self._cz = params.cz
-    self._nx = params.core_nx * params.cx
-    self._ny = params.core_ny * params.cy
-    self._nz = params.core_nz * params.cz
-    self._halo_width_x = int((params.nx - params.core_nx) / 2)
-    self._halo_width_y = int((params.ny - params.core_ny) / 2)
-    self._halo_width_z = int((params.nz - params.core_nz) / 2)
+    self._nx = params.core_nx * params.cx  # pyrefly: ignore[unsupported-operation]
+    self._ny = params.core_ny * params.cy  # pyrefly: ignore[unsupported-operation]
+    self._nz = params.core_nz * params.cz  # pyrefly: ignore[unsupported-operation]
+    self._halo_width_x = int((params.nx - params.core_nx) / 2)  # pyrefly: ignore[unsupported-operation]
+    self._halo_width_y = int((params.ny - params.core_ny) / 2)  # pyrefly: ignore[unsupported-operation]
+    self._halo_width_z = int((params.nz - params.core_nz) / 2)  # pyrefly: ignore[unsupported-operation]
     self._dx = params.dx
     self._dy = params.dy
     self._dz = params.dz
@@ -118,9 +118,9 @@ class DistTurbulenceSynthesizer(object):
     halo_width_z = self._halo_width_z
 
     spectral_grids = common_ops.get_spectral_index_grid(
-        core_nx,
-        core_ny,
-        core_nz,
+        core_nx,  # pyrefly: ignore[bad-argument-type]
+        core_ny,  # pyrefly: ignore[bad-argument-type]
+        core_nz,  # pyrefly: ignore[bad-argument-type]
         replicas,
         replica_id,
         halos=[halo_width_x, halo_width_y, halo_width_z])
@@ -131,9 +131,9 @@ class DistTurbulenceSynthesizer(object):
     yy_c = spectral_grids['yy_c']
     zz_c = spectral_grids['zz_c']
 
-    core_nx_full = core_nx + 2 * halo_width_x
-    core_ny_full = core_ny + 2 * halo_width_y
-    core_nz_full = core_nz + 2 * halo_width_z
+    core_nx_full = core_nx + 2 * halo_width_x  # pyrefly: ignore[unsupported-operation]
+    core_ny_full = core_ny + 2 * halo_width_y  # pyrefly: ignore[unsupported-operation]
+    core_nz_full = core_nz + 2 * halo_width_z  # pyrefly: ignore[unsupported-operation]
 
     def get_mesh(
         xx,
@@ -304,9 +304,9 @@ class DistTurbulenceSynthesizer(object):
                             vk_final * tf.math.conj(vk_final) +
                             wk_final * tf.math.conj(wk_final)))
 
-    tke_hat = 0.5 * common_ops.global_mean(tf.unstack(spec_sq, axis=2),
+    tke_hat = 0.5 * common_ops.global_mean(tf.unstack(spec_sq, axis=2),  # pyrefly: ignore[unsupported-operation]
                                            replicas, halos)
-    epsilon_hat = (2.0 * nu *
+    epsilon_hat = (2.0 * nu *  # pyrefly: ignore[unsupported-operation]
                    common_ops.global_mean(
                        tf.unstack(kk_sq * spec_sq, axis=2),
                        replicas, halos) / nx / ny / nz)
@@ -350,7 +350,7 @@ class DistTurbulenceSynthesizer(object):
       return [
           tf.transpose(component, perm=[1, 2, 0])
           for component in analytics_util.gradient(
-              kernel_op, u, self._dx, self._dy, self._dz
+              kernel_op, u, self._dx, self._dy, self._dz  # pyrefly: ignore[bad-argument-type]
           )
       ]
 
@@ -375,4 +375,4 @@ class DistTurbulenceSynthesizer(object):
       w = tf.math.real(w)
       p = tf.math.real(p)
 
-    return u, v, w, p, tke_hat, epsilon_hat, amp
+    return u, v, w, p, tke_hat, epsilon_hat, amp  # pyrefly: ignore[bad-return]

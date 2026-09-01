@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class DistTPUFFT(object):
       replica_groups = []
       source_target_pairs = []
       indices = [0, 0, 0]
-      indices[d] = slice(0, replicas.shape[d])
+      indices[d] = slice(0, replicas.shape[d])  # pyrefly: ignore[unsupported-operation]
       for i in range(replicas.shape[(d + 1) % 3]):
         for j in range(replicas.shape[(d + 2) % 3]):
           indices[(d + 1) % 3] = i
@@ -388,7 +388,7 @@ class DistTPUFFT(object):
 
     def cond(dest_transform, dest_core_position, source_transform,
              source_core_position, i):
-      del (dest_transform, dest_core_position, source_transform,
+      del (dest_transform, dest_core_position, source_transform,  # pyrefly: ignore[unsupported-delete]
            source_core_position)
       return i < self._replicas.shape[transform_dim]
 
@@ -431,7 +431,7 @@ class DistTPUFFT(object):
   def transform_2d(self,
                    partial_input: tf.Tensor,
                    transform_dims: Sequence[int],
-                   halo_widths: Sequence[int] = 0,
+                   halo_widths: Sequence[int] = 0,  # pyrefly: ignore[bad-function-definition]
                    inverse: bool = False) -> tf.Tensor:  # pytype: disable=annotation-type-mismatch
     """Performs a 2d Fourier transform or inverse Fourier transform.
 

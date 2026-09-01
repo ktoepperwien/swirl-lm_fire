@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -315,7 +315,7 @@ class Derivatives:
       self, custom_kernel_op: get_kernel_fn.ApplyKernelOp
   ) -> Self:
     """Creates a copy of derivative lib, but using a custom kernel op."""
-    return Derivatives(
+    return Derivatives(  # pyrefly: ignore[bad-return]
         custom_kernel_op,
         self._use_3d_tf_tensor,
         self._grid_spacings,

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -145,7 +145,7 @@ class TwoStreamSolver:
             temperature,
             molecules,
             igpt,
-            vmr_fields=vmr_fields,
+            vmr_fields=vmr_fields,  # pyrefly: ignore[bad-argument-type]
             cloud_r_eff_liq=cloud_r_eff_liq,
             cloud_path_liq=cloud_path_liq,
             cloud_r_eff_ice=cloud_r_eff_ice,
@@ -159,7 +159,7 @@ class TwoStreamSolver:
             pressure,
             temperature,
             igpt,
-            vmr_fields,
+            vmr_fields,  # pyrefly: ignore[bad-argument-type]
             sfc_temperature=sfc_temperature,
         )
     )
@@ -254,7 +254,7 @@ class TwoStreamSolver:
     # numerical identifiers.
     if vmr_fields is not None and self._optics_lib.gas_optics_lw is not None:
       gas_optics_lib = self._optics_lib.gas_optics_lw
-      vmr_fields = self._reindex_vmr_fields(vmr_fields, gas_optics_lib)
+      vmr_fields = self._reindex_vmr_fields(vmr_fields, gas_optics_lib)  # pyrefly: ignore[bad-assignment]
       if extended_grid_states is not None:
         # Create shallow copy to prevent altering the original dictionary.
         extended_grid_states = dict(extended_grid_states)
@@ -301,7 +301,7 @@ class TwoStreamSolver:
           top_flux_down=top_flux_down,
           sfc_emissivity=sfc_emissivity,
           **optical_props_2stream,
-          extended_grid_optical_props=optical_props_2stream_ext,
+          extended_grid_optical_props=optical_props_2stream_ext,  # pyrefly: ignore[bad-argument-type]
       )
       return igpt + 1, tf.nest.map_structure(
           tf.math.add, fluxes, cumulative_flux,
@@ -388,7 +388,7 @@ class TwoStreamSolver:
     # numerical identifiers.
     if vmr_fields is not None and self._optics_lib.gas_optics_sw is not None:
       gas_optics_lib = self._optics_lib.gas_optics_sw
-      vmr_fields = self._reindex_vmr_fields(
+      vmr_fields = self._reindex_vmr_fields(  # pyrefly: ignore[bad-assignment]
           vmr_fields, gas_optics_lib
       )
       if extended_grid_states is not None:
@@ -404,7 +404,7 @@ class TwoStreamSolver:
           temperature,
           molecules,
           igpt,
-          vmr_fields=vmr_fields,
+          vmr_fields=vmr_fields,  # pyrefly: ignore[bad-argument-type]
           cloud_r_eff_liq=cloud_r_eff_liq,
           cloud_path_liq=cloud_path_liq,
           cloud_r_eff_ice=cloud_r_eff_ice,
@@ -526,7 +526,7 @@ class TwoStreamSolver:
 
     def heating_rate_fn(dflux: tf.Tensor, dp: tf.Tensor):
       """Computes the heating rate at the grid cell center [W]."""
-      return constants.G * dflux / dp / constants.CP
+      return constants.G * dflux / dp / constants.CP  # pyrefly: ignore[unsupported-operation]
 
     return tf.nest.map_structure(
         heating_rate_fn,

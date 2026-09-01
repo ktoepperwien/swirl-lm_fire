@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -169,13 +169,13 @@ def local_stretched_grid_vars_from_global_xyz(
 
     # Get local slices from the 1D global arrays.
     coord_local = common_ops.get_local_slice_of_1d_array(
-        global_coord, logical_coordinates[dim], core_n[dim], n[dim]
+        global_coord, logical_coordinates[dim], core_n[dim], n[dim]  # pyrefly: ignore[bad-argument-type]
     )
     h_local = common_ops.get_local_slice_of_1d_array(
-        global_h, logical_coordinates[dim], core_n[dim], n[dim]
+        global_h, logical_coordinates[dim], core_n[dim], n[dim]  # pyrefly: ignore[bad-argument-type]
     )
     h_face_local = common_ops.get_local_slice_of_1d_array(
-        global_h_face, logical_coordinates[dim], core_n[dim], n[dim]
+        global_h_face, logical_coordinates[dim], core_n[dim], n[dim]  # pyrefly: ignore[bad-argument-type]
     )
 
     coord_local_3d = common_ops.convert_to_3d_tensor_and_tile(

@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -73,5 +73,5 @@ def additional_keys(
     ]
     diagnostic_keys += [f'extended_{k}' for k in diagnostic_keys]
     # Include diagnostic keys only if present in `additional_state_keys`.
-    diagnostic_keys = [k for k in diagnostic_keys if k in additional_state_keys]
+    diagnostic_keys = [k for k in diagnostic_keys if k in additional_state_keys]  # pyrefly: ignore[not-iterable]
     return required_keys(radiative_transfer_config) + diagnostic_keys

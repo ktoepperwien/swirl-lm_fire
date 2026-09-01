@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -154,13 +154,13 @@ def apply_one_core_boundary_conditions_to_tensor_or_array(
       sign = (-1, 1)[side]
 
       if bc_type == BCType.DIRICHLET:
-        concat_plane = cast(broadcast_to(bc_value, shape_with_axis_1d))
+        concat_plane = cast(broadcast_to(bc_value, shape_with_axis_1d))  # pyrefly: ignore[no-matching-overload]
       elif bc_type == BCType.NEUMANN:
         neumann_slice = [slice(None)] * rank
         neumann_slice[axis] = (slice(0, 1), slice(-1, None))[side]
         neumann_plane = x_shaved[tuple(neumann_slice)]
         concat_plane = (neumann_plane +
-                        sign * cast(broadcast_to(bc_value, shape_with_axis_1d)))
+                        sign * cast(broadcast_to(bc_value, shape_with_axis_1d)))  # pyrefly: ignore[no-matching-overload]
       else:
         raise NotImplementedError("Only DIRICHLET, NEUMANN and NO_TOUCH "
                                   "boundary condition types are supported.")
@@ -192,7 +192,7 @@ def apply_one_core_boundary_conditions(
     return x
 
   use_np = isinstance(x[0], np.ndarray)
-  shape_xy = x[0].shape if use_np else x[0].shape.as_list()
+  shape_xy = x[0].shape if use_np else x[0].shape.as_list()  # pyrefly: ignore[missing-attribute]
 
   concat, broadcast_to = ((np.concatenate, np.broadcast_to) if use_np
                           else (tf.concat, tf.broadcast_to))
@@ -214,13 +214,13 @@ def apply_one_core_boundary_conditions(
 
         if bc_type == BCType.DIRICHLET:
           concat_planes = [
-              cast(broadcast_to(bc_value, shape_2d_with_axis_1d))] * len(x)
+              cast(broadcast_to(bc_value, shape_2d_with_axis_1d))] * len(x)  # pyrefly: ignore[no-matching-overload]
         elif bc_type == BCType.NEUMANN:
           neumann_slice = [slice(None)] * 2
           neumann_slice[axis] = (slice(0, 1), slice(-1, None))[side]
           neumann_planes = [x_2d[tuple(neumann_slice)] for x_2d in x_shaved]
           concat_planes = [
-              plane + sign * cast(broadcast_to(bc_value, shape_2d_with_axis_1d))
+              plane + sign * cast(broadcast_to(bc_value, shape_2d_with_axis_1d))  # pyrefly: ignore[no-matching-overload]
               for plane in neumann_planes]
         else:
           raise NotImplementedError("Only DIRICHLET, NEUMANN and NO_TOUCH "
@@ -232,12 +232,12 @@ def apply_one_core_boundary_conditions(
         replacement_index = 0 if side == 0 else -1
 
         if bc_type == BCType.DIRICHLET:
-          replacement_plane = cast(broadcast_to(bc_value, shape_xy))
+          replacement_plane = cast(broadcast_to(bc_value, shape_xy))  # pyrefly: ignore[no-matching-overload]
         elif bc_type == BCType.NEUMANN:
           neumann_plane = x[1] if side == 0 else x[-2]
           sign = (-1, 1)[side]
           replacement_plane = (
-              neumann_plane + cast(sign * broadcast_to(bc_value, shape_xy)))
-        x[replacement_index] = replacement_plane
+              neumann_plane + cast(sign * broadcast_to(bc_value, shape_xy)))  # pyrefly: ignore[no-matching-overload]
+        x[replacement_index] = replacement_plane  # pyrefly: ignore[unbound-name]
 
   return x

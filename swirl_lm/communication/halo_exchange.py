@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ from collections import abc
 from typing import Optional, Sequence, Union
 
 import numpy as np
-from six.moves import range
+from six.moves import range  # pyrefly: ignore[missing-source-for-stubs]
 from swirl_lm.communication import halo_exchange_utils
 from swirl_lm.utility import common_ops
 from swirl_lm.utility import types
@@ -267,30 +267,30 @@ def _replace_halo(tensor, plane, bc, dim, side=None, low_side_padding=0):
   bc_type, bc_value = bc
 
   def neumann_value():
-    buf = _get_homogeneous_neumann_bc_order1(tensor, dim, side.value,
+    buf = _get_homogeneous_neumann_bc_order1(tensor, dim, side.value,  # pyrefly: ignore[missing-attribute]
                                              plane + low_side_padding)
     sign = -1.0 if side == SideType.LOW else 1.0
     return _a_x_plus_y(sign, bc_value, buf)
 
   def neumann_value_order2():
-    buf = _get_homogeneous_neumann_bc_order2(tensor, dim, side.value,
+    buf = _get_homogeneous_neumann_bc_order2(tensor, dim, side.value,  # pyrefly: ignore[missing-attribute]
                                              plane + low_side_padding)
     sign = -1.0 if side == SideType.LOW else 1.0
     return _a_x_plus_y(sign, bc_value, buf)
 
   def dirichlet_value():
     if isinstance(bc_value, float):
-      buf = _get_homogeneous_neumann_bc_order1(tensor, dim, side.value, plane)
+      buf = _get_homogeneous_neumann_bc_order1(tensor, dim, side.value, plane)  # pyrefly: ignore[missing-attribute]
       return tf.nest.map_structure(lambda b: bc_value * tf.ones_like(b), buf)
     else:
       return bc_value
 
   def additive_value():
-    buf = _get_additive_bc(tensor, dim, side.value, plane + low_side_padding)
+    buf = _get_additive_bc(tensor, dim, side.value, plane + low_side_padding)  # pyrefly: ignore[missing-attribute]
     return _a_x_plus_y(1.0, bc_value, buf)
 
   def no_touch_value():
-    return _get_additive_bc(tensor, dim, side.value, plane + low_side_padding)
+    return _get_additive_bc(tensor, dim, side.value, plane + low_side_padding)  # pyrefly: ignore[missing-attribute]
 
   if bc_type == BCType.NEUMANN:
     return neumann_value()
@@ -477,12 +477,12 @@ def inplace_halo_exchange(
     The incoming z_list modified to include the result of halo exchange and
       taking boundary conditions into account.
   """
-  periodic_dims = periodic_dims or [None] * len(dims)
+  periodic_dims = periodic_dims or [None] * len(dims)  # pyrefly: ignore[bad-assignment]
   boundary_conditions = (boundary_conditions if boundary_conditions is not None
                          else [[None, None]] * len(dims))
 
   assert len(dims) == len(replica_dims)
-  assert len(dims) == len(periodic_dims)
+  assert len(dims) == len(periodic_dims)  # pyrefly: ignore[bad-argument-type]
   assert len(dims) == len(boundary_conditions)
 
   def get_bc_val(bc_info, plane):
@@ -501,9 +501,9 @@ def inplace_halo_exchange(
 
     return bc_info_plane
 
-  with tf.name_scope("HaloExchange"):
+  with tf.name_scope("HaloExchange"):  # pyrefly: ignore[bad-instantiation]
     for dim, replica_dim, periodic, bc in zip(
-        dims, replica_dims, periodic_dims, boundary_conditions
+        dims, replica_dims, periodic_dims, boundary_conditions  # pyrefly: ignore[bad-argument-type]
     ):
       bc_low, bc_high = bc if bc is not None else (None, None)
       _validate_boundary_condition(bc_low, tensor, dim, width)
@@ -738,4 +738,4 @@ def clear_halos(x: FlowFieldVal, halo_width: int) -> FlowFieldVal:
   x_new = [tf.zeros_like(x[0])] * halo_width + x_new + [tf.zeros_like(x[0])
                                                        ] * halo_width
 
-  return x_new
+  return x_new  # pyrefly: ignore[bad-return]

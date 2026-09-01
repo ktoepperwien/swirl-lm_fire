@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -201,7 +201,7 @@ class OpticsScheme(metaclass=abc.ABCMeta):
       boundary_vals = [[v_i[0] for v_i in v] for v in boundary_vals]
 
     bc = [[(halo_exchange.BCType.NEUMANN, 0.0)] * 2 for _ in range(3)]
-    bc[self._g_dim] = [
+    bc[self._g_dim] = [  # pyrefly: ignore[unsupported-operation]
         (halo_exchange.BCType.DIRICHLET, bv) for bv in boundary_vals
     ]
     return halo_exchange.inplace_halo_exchange(

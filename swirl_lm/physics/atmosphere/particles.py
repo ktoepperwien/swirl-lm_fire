@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -155,7 +155,7 @@ def n_0(
         'Snow.params must be set to compute the size distribution parameter.'
     )
     return particle.mu * tf.math.pow(
-        rho * q_s / constants.RHO_AIR, params.nu
+        rho * q_s / constants.RHO_AIR, params.nu  # pyrefly: ignore[unsupported-operation]
     )
   elif isinstance(particle, (Ice, Rain)):
     return tf.constant(particle.params.n_0)
@@ -193,7 +193,7 @@ def marshall_palmer_distribution_parameter_lambda(
     # divide_no_nan.
     return tf.math.pow(
         tf.math.divide_no_nan(
-            gamma(m) * coeff.chi_m * m_0 * n_0(particle, rho, q),
+            gamma(m) * coeff.chi_m * m_0 * n_0(particle, rho, q),  # pyrefly: ignore[unsupported-operation]
             tf.maximum(q, 0.0)
             * rho
             * tf.math.pow(coeff.r_0, coeff.m_e + coeff.del_m),

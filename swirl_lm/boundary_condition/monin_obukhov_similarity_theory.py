@@ -1,4 +1,4 @@
-# Copyright 2025 The swirl_lm Authors.
+# Copyright 2026 The swirl_lm Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -185,7 +185,7 @@ class MoninObukhovSimilarityTheory(object):
         stability correction functions for the momemtum and energy,
         respectively.
       """
-      return -self.beta_m * z if option == 'M' else -self.beta_h * z
+      return -self.beta_m * z if option == 'M' else -self.beta_h * z  # pyrefly: ignore[bad-return, unsupported-operation]
 
     def neutral(z: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
       """Computes the correction functions for a neutral boundary layer.
@@ -229,12 +229,12 @@ class MoninObukhovSimilarityTheory(object):
       alpha = 1.0
 
       if option == 'M':
-        x = tf.math.pow(tf.maximum(1.0 - self.gamma_m * z, 0.0), 0.25)
+        x = tf.math.pow(tf.maximum(1.0 - self.gamma_m * z, 0.0), 0.25)  # pyrefly: ignore[unsupported-operation]
 
         psi = 2.0 * tf.math.log(0.5 * (1.0 + x)) + tf.math.log(
             0.5 * (1.0 + x**2)) - 2.0 * tf.math.atan(x) + 0.5 * np.pi
       else:
-        y = tf.math.pow(tf.maximum(1.0 - self.gamma_h * z, 0.0), 0.5)
+        y = tf.math.pow(tf.maximum(1.0 - self.gamma_h * z, 0.0), 0.5)  # pyrefly: ignore[unsupported-operation]
         psi = 2.0 * alpha * tf.math.log(0.5 * (1.0 + y))
 
       return psi
@@ -282,8 +282,8 @@ class MoninObukhovSimilarityTheory(object):
         v: tf.Tensor,
     ) -> tf.Tensor:
       """Computes the Richardson number."""
-      return constants.G * height * tf.math.divide_no_nan(t - self.t_s,
-                                                          (u**2 + v**2) * t)
+      return constants.G * height * tf.math.divide_no_nan(t - self.t_s,  # pyrefly: ignore[unsupported-operation]
+                                                          (u**2 + v**2) * t)  # pyrefly: ignore[unsupported-operation]
 
     return tf.nest.map_structure(richardson_number, theta, u1, u2)
 
@@ -421,7 +421,7 @@ class MoninObukhovSimilarityTheory(object):
         phi: tf.Tensor,
     ) -> tf.Tensor:
       """Computes the surface heat flux."""
-      return (self.t_s - theta_i) * u_s_i * _KAPPA / (
+      return (self.t_s - theta_i) * u_s_i * _KAPPA / (  # pyrefly: ignore[unsupported-operation]
           tf.math.log(height / self.z_0) - phi)
 
     def most_drag_coefficient(phi_m, rho):
@@ -585,14 +585,14 @@ class MoninObukhovSimilarityTheory(object):
     # Use the user defined sea surface reference value in the configuration if
     # available, otherwise use values at the first halo layer as the sea surface
     # reference.
-    phi_z0 = self.sea_level_ref.get(
+    phi_z0 = self.sea_level_ref.get(  # pyrefly: ignore[no-matching-overload]
         varname,
         common_ops.get_face(states['phi'], self.vertical_dim, 0,
                             self.halo_width - 1)[0])
 
     # Note that if an exchange coefficient is provided in the config, it will
     # override the MOST model (not computed).
-    c_h = self.exchange_coeff.get(
+    c_h = self.exchange_coeff.get(  # pyrefly: ignore[no-matching-overload]
         varname, self._exchange_coefficient(theta, u1, u2, self.height, varname)
     )
 
@@ -608,8 +608,8 @@ class MoninObukhovSimilarityTheory(object):
       return (
           -rho_i
           * c_h_i
-          * tf.math.sqrt(self.surface_gustiness**2 + u1_i**2 + u2_i**2)
-          * (phi_zm_i - phi_z0_i)
+          * tf.math.sqrt(self.surface_gustiness**2 + u1_i**2 + u2_i**2)  # pyrefly: ignore[unsupported-operation]
+          * (phi_zm_i - phi_z0_i)  # pyrefly: ignore[unsupported-operation]
       )
 
     if isinstance(phi_z0, Sequence) and isinstance(c_h, Sequence):
@@ -805,13 +805,13 @@ class MoninObukhovSimilarityTheory(object):
     Returns:
       The Obukhov length.
     """
-    param = tf.math.divide_no_nan(m**2 / constants.G * self.t_0,
-                                  temperature - self.t_s)
+    param = tf.math.divide_no_nan(m**2 / constants.G * self.t_0,  # pyrefly: ignore[unsupported-operation]
+                                  temperature - self.t_s)  # pyrefly: ignore[unsupported-operation]
 
     a = self.beta_m**2 + tf.math.divide_no_nan(param * self.beta_h, z_m)
-    b = 2.0 * self.beta_m * tf.math.log(z_m / self.z_0) + tf.math.divide_no_nan(
-        self.alpha * param * tf.math.log(z_m / self.z_t), z_m)
-    c = tf.math.log(z_m / self.z_0)**2
+    b = 2.0 * self.beta_m * tf.math.log(z_m / self.z_0) + tf.math.divide_no_nan(  # pyrefly: ignore[unsupported-operation]
+        self.alpha * param * tf.math.log(z_m / self.z_t), z_m)  # pyrefly: ignore[unsupported-operation]
+    c = tf.math.log(z_m / self.z_0)**2  # pyrefly: ignore[unsupported-operation]
 
     delta = tf.math.sqrt(tf.maximum(b**2 - 4.0 * a * c, 0.0))
     l_inv_1 = tf.math.divide_no_nan(-b - delta, 2.0 * a)
