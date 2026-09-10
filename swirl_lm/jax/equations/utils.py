@@ -268,12 +268,13 @@ def shear_flux(
       tau_s2 = -tau_s2
 
       # Determine which tau components to replace based on vertical_dim.
+      physical_axes = ('x', 'y', 'z')
       g_dim = most.vertical_dim
-      g_axis = axes[g_dim]
+      g_axis = physical_axes[g_dim]
       horiz_dims = most.horizontal_dims
 
       # Map horizontal dimensions to axis names.
-      horiz_axes = [axes[d] for d in horiz_dims]
+      horiz_axes = [physical_axes[d] for d in horiz_dims]
 
       # tau_s1 corresponds to shear stress of first horizontal velocity
       # on g_axis face, tau_s2 for the second horizontal velocity.
@@ -285,15 +286,25 @@ def shear_flux(
       halo_width = params.halo_width
       axis_index: int = params.grid_params.get_axis_index(g_axis)  # pyrefly: ignore[bad-assignment]
 
+      # `jax.lax.axis_index` raises `NameError` outside of a parallel context
+      # (e.g. un-sharded CPU unit tests). `is_bottom_shard = True` is required
+      # in un-sharded execution because a single device holds the entire domain
+      # including the ground boundary.
+      try:
+        is_bottom_shard = jax.lax.axis_index(g_axis) == 0
+      except NameError:
+        is_bottom_shard = True
+
       for tau_key, tau_s in ((tau_key_1, tau_s1), (tau_key_2, tau_s2)):
         # Expand the 2D surface value back to 3D (single plane).
         plane = jnp.expand_dims(tau_s, axis=axis_index)
         # Build the start indices for dynamic_update_slice.
         start_idx = [0, 0, 0]
         start_idx[axis_index] = halo_width
-        tau[tau_key] = jax.lax.dynamic_update_slice(
+        tau_updated = jax.lax.dynamic_update_slice(
             tau[tau_key], plane, tuple(start_idx)
         )
+        tau[tau_key] = jnp.where(is_bottom_shard, tau_updated, tau[tau_key])
 
     return tau
 
@@ -310,9 +321,10 @@ def bound_viscosity(
     return nu
 
   axes = params.grid_params.data_axis_order
-  for dim, axis in enumerate(axes):  # pylint: disable=unused-variable
+  for dim, axis in enumerate(axes):
     if params.use_stretched_grid[dim]:
-      h = additional_states[stretched_grid_util.h_face_key(dim)]
+      physical_dim = ('x', 'y', 'z').index(axis)
+      h = additional_states[stretched_grid_util.h_face_key(physical_dim)]
     else:
       h = params.grid_spacings[dim]
     nu_max = params.diff_stab_crit * (h**2 / params.dt)

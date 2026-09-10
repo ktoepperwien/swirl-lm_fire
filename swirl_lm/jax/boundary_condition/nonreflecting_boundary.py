@@ -52,6 +52,7 @@ from swirl_lm.jax.base import physical_variable_keys_manager
 from swirl_lm.jax.boundary_condition import boundary_condition_utils
 from swirl_lm.jax.communication import halo_exchange
 from swirl_lm.jax.equations import common
+from swirl_lm.jax.utility import common_ops
 from swirl_lm.jax.utility import types
 
 ScalarField = types.ScalarField
@@ -115,8 +116,7 @@ def nonreflecting_bc_state_init_fn(
   """Initializes states used in nonreflecting boundary calculations.
 
   For each variable/dim/face that has a NONREFLECTING BC, creates a zero
-  array of shape matching the boundary face (1 cell thick along dim,
-  halo_width cells thick along the perpendicular dimension).
+  array of shape matching the boundary condition format.
 
   Args:
     params: Simulation parameters.
@@ -126,18 +126,18 @@ def nonreflecting_bc_state_init_fn(
   """
   bc_map = {}
   gp = params.grid_params
-  base_shape = (gp.nz, gp.nx, gp.ny)
   bc_manager = physical_variable_keys_manager.BoundaryConditionKeysHelper()
   for k in boundary_condition_utils.get_keys_for_boundary_condition(
       params.bc, halo_exchange.BCType.NONREFLECTING
   ):
     bc_info = bc_manager._parse_key(k)  # pylint: disable=protected-access
     dim = bc_info[1]
-    shape = list(base_shape)
-    # The boundary plane has size 1 along the normal dimension; the
-    # perpendicular dimension stores halo_width layers of boundary values.
-    shape[(dim + 1) % 3] = params.halo_width
-    bc_map[k] = jnp.zeros(shape, dtype=jnp.float32)
+    plane_dims = [d for d in range(3) if d != dim]
+    plane_core_n = [(gp.core_nx, gp.core_ny, gp.core_nz)[d] for d in plane_dims]
+    zeros_2d = jnp.zeros(plane_core_n, dtype=jnp.float32)
+    bc_map[k] = boundary_condition_utils.boundary_plane_to_bc(
+        zeros_2d, dim, params.halo_width, gp, pad_mode='edge'
+    )
   return bc_map
 
 
@@ -203,10 +203,14 @@ def nonreflecting_bc_state_update_fn(
     )
 
     phi = states[varname]
+    axis = ('x', 'y', 'z')[dim]
 
     # Get velocity at the boundary face (first interior cell).
     velocity_keys = [common.KEY_U, common.KEY_V, common.KEY_W]
-    u_face = _get_face_slice(states[velocity_keys[dim]], dim, face, halo_width)
+    u_face_2d = common_ops.get_face(
+        states[velocity_keys[dim]], axis, face, halo_width, params.grid_params
+    )
+    u_face = jnp.expand_dims(u_face_2d, axis=dim)
 
     # Compute phase velocity.
     phase_u = _phase_velocity(
@@ -214,13 +218,17 @@ def nonreflecting_bc_state_update_fn(
     )
 
     # CFL number.
-    cfl = jnp.abs(phase_u) * params.dt / spacings[dim]
+    cfl = jnp.abs(jnp.squeeze(phase_u, axis=dim)) * params.dt / spacings[dim]
 
     # Inner boundary value of phi.
-    phi_inner = _get_face_slice(phi, dim, face, halo_width)
+    phi_inner = common_ops.get_face(
+        phi, axis, face, halo_width, params.grid_params
+    )
 
     # Previous boundary state (from additional_states).
-    prev_bc = _get_face_slice(additional_states[k], dim, 1 - face, 0)
+    prev_bc = common_ops.get_face(
+        additional_states[k], axis, face, 0, params.grid_params
+    )
 
     # Forward-Euler upwind update.
     if step_id == buffer_init_step:
@@ -229,10 +237,16 @@ def nonreflecting_bc_state_update_fn(
     else:
       updated = cfl * phi_inner + (1.0 - cfl) * prev_bc
 
-    # Tile to fill all halo layers (halo_width cells thick).
-    reps = [1, 1, 1]
-    reps[(dim + 1) % 3] = halo_width
-    updated_additional_states[k] = jnp.tile(updated, reps)
+    updated_core = (
+        updated[halo_width:-halo_width, halo_width:-halo_width]
+        if halo_width > 0
+        else updated
+    )
+    updated_additional_states[k] = (
+        boundary_condition_utils.boundary_plane_to_bc(
+            updated_core, dim, halo_width, params.grid_params, pad_mode='edge'
+        )
+    )
 
   return updated_additional_states
 

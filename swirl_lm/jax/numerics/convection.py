@@ -326,10 +326,10 @@ def flux_upwinding(
       axis,
       src,
       apply_correction,
-      bc_types,
-      varname,
-      halo_width,
-      grid_params,
+      bc_types=bc_types,
+      varname=varname,
+      halo_width=halo_width,
+      grid_params=grid_params,
   )
 
   state_pos, state_neg = interp_fn(state)
@@ -386,7 +386,7 @@ def flux_roe(
   Raises:
     NotImplementedError: If Rhie-Chow correction is enabled.
   """
-  del pressure, dx, dt, src, bc_types, varname, halo_width, grid_params  # pyrefly: ignore[unsupported-delete]
+  del pressure, dx, dt, src, bc_types, varname, halo_width, grid_params
 
   if apply_correction:
     raise NotImplementedError(

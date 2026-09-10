@@ -393,7 +393,7 @@ def poisson_jacobi_step_fn(
 
     return functools.partial(
         poisson_jacobi, params=params, n=n, weight=weight,
-        halo_exchange_fn=halo_exchange_fn,
+        halo_exchange_fn=halo_exchange_fn,  # pyrefly: ignore[bad-argument-type]
         all_no_touch_boundary_conditions=all_no_touch)
 
   return step_fn

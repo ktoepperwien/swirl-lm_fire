@@ -184,7 +184,8 @@ class Derivatives:
     df_dim_face = self._backward_difference(array_node, axis)
     axis_index = self.grid_params.get_axis_index(axis)
     if self.grid_params.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
-      h_face_key = stretched_grid_util.h_face_key(axis_index)  # pyrefly: ignore[bad-argument-type]
+      physical_dim = ('x', 'y', 'z').index(axis)
+      h_face_key = stretched_grid_util.h_face_key(physical_dim)
       h_face = additional_states[h_face_key]
       return df_dim_face / (h_face * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
     else:
@@ -216,7 +217,8 @@ class Derivatives:
     df_dim = self._forward_difference(array_face, axis)
     axis_index = self.grid_params.get_axis_index(axis)
     if self.grid_params.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
-      h_key = stretched_grid_util.h_key(axis_index)  # pyrefly: ignore[bad-argument-type]
+      physical_dim = ('x', 'y', 'z').index(axis)
+      h_key = stretched_grid_util.h_key(physical_dim)
       h = additional_states[h_key]
       return df_dim / (h * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
     else:
@@ -244,7 +246,8 @@ class Derivatives:
     df_dim = self._centered_difference(array_node, axis)
     axis_index = self.grid_params.get_axis_index(axis)
     if self.grid_params.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
-      h_key = stretched_grid_util.h_key(axis_index)  # pyrefly: ignore[bad-argument-type]
+      physical_dim = ('x', 'y', 'z').index(axis)
+      h_key = stretched_grid_util.h_key(physical_dim)
       h = additional_states[h_key]
       return df_dim / (h * 2 * self.grid_params.grid_spacings[axis_index])  # pyrefly: ignore[bad-index]
     else:

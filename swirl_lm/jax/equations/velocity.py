@@ -361,7 +361,11 @@ class Velocity:
         dp_dh = rho_ref * dp_dh
 
       # External force.
-      force = forces[dim] or jnp.zeros_like(states[vel_key])
+      force = (
+          forces[dim]
+          if forces[dim] is not None
+          else jnp.zeros_like(states[vel_key])
+      )
 
       # RHS = -conv + diff - dp/dx + gravity + force
       rhs = (
@@ -557,7 +561,7 @@ class Velocity:
     }
 
     # Output nu_t if SGS is enabled and the caller tracks it.
-    if nu_t and 'nu_t' in additional_states:
+    if nu_t is not None and 'nu_t' in additional_states:
       updated_velocity['nu_t'] = nu_t
 
     return updated_velocity

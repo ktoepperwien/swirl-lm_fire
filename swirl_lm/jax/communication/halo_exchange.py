@@ -31,7 +31,7 @@ from typing import Literal
 
 import jax
 import jax.numpy as jnp
-from jax.sharding import Mesh
+from jax.sharding import Mesh  # pylint: disable=g-importing-member
 from swirl_lm.jax.communication import halo_exchange_utils
 from swirl_lm.jax.utility import common_ops
 from swirl_lm.jax.utility import grid_parametrization
@@ -545,19 +545,23 @@ def _validate_boundary_condition(
     )
 
   array_shape = list(array.shape)
-  array_shape[grid_params.get_axis_index(axis)] = 1  # pyrefly: ignore[unsupported-operation]
-  array_shape = tuple(array_shape)
+  axis_index = grid_params.get_axis_index(axis)
+  array_shape[axis_index] = 1  # pyrefly: ignore[unsupported-operation]
+  expected_3d = tuple(array_shape)
+  # Also accept 2D squeezed planes (axis dim removed), since get_face returns
+  # squeezed arrays and array_scatter_1d_update squeezes internally.
+  expected_2d = tuple(s for i, s in enumerate(array_shape) if i != axis_index)
   for bc_array in bc_value:
     if not isinstance(bc_array, jax.Array):
       raise ValueError(
           "The boundary condition must be a sequence of 2D `jax.Array` with"
           f" length being the halo width. Found list of {type(bc_array)}."
       )
-    if bc_array.shape != array_shape:
+    if bc_array.shape not in (expected_3d, expected_2d):
       raise ValueError(
           "The boundary condition must be a float or a list of tensors of"
-          f" shape {array_shape}. Found a tensor in the list with shape"
-          f" {bc_array.shape}."
+          f" shape {expected_3d} or {expected_2d}. Found a tensor in the list"
+          f" with shape {bc_array.shape}."
       )
 
 

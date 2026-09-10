@@ -101,7 +101,9 @@ class Simulation:
     # IBM is injected for applying constraints in prediction/correction steps.
     self.velocity = velocity_lib.Velocity(params, self.thermodynamics, ib=ib)
     self.pressure = pressure_lib.Pressure(
-        params, solver_option=self._pressure_solver_option(params)
+        params,
+        self.thermodynamics,
+        solver_option=self._pressure_solver_option(params),
     )
 
     # Only create scalar solver if transport scalars are configured.

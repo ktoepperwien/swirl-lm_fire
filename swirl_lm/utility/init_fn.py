@@ -295,7 +295,7 @@ def blasius_boundary_layer(
     return (u_n * tf.math.sin(theta) +
             w_n * tf.math.cos(theta)) * corr + w_n * (1.0 - corr)  # pyrefly: ignore[unsupported-operation]
 
-  return {'u': u_init_fn, 'v': v_init_fn, 'w': w_init_fn}  # pyrefly: ignore[bad-return]
+  return {'u': u_init_fn, 'v': v_init_fn, 'w': w_init_fn}  # pyrefly: ignore[bad-assignment, bad-return]
 
 
 def logarithmic_boundary_layer(
@@ -416,4 +416,4 @@ def logarithmic_boundary_layer(
 
     return tf.zeros_like(zz)
 
-  return {'u': u_init_fn, 'v': v_init_fn, 'w': w_init_fn}  # pyrefly: ignore[bad-return]
+  return {'u': u_init_fn, 'v': v_init_fn, 'w': w_init_fn}  # pyrefly: ignore[bad-assignment, bad-return]

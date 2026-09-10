@@ -296,15 +296,26 @@ class Scalars:
     )
     mass_source = jnp.zeros_like(states[_KEY_RHO])
 
+    # Construct midpoint states for Crank-Nicolson time integration.
+    # Average rho, rho_thermal, and all scalars between current and initial.
+    states_mid = dict(states)
+    states_mid[_KEY_RHO] = 0.5 * (states[_KEY_RHO] + states_0[_KEY_RHO])
+    if 'rho_thermal' in states and 'rho_thermal' in states_0:
+      states_mid['rho_thermal'] = 0.5 * (
+          states['rho_thermal'] + states_0['rho_thermal']
+      )
+    for sc_name in self._params.transport_scalars_names:
+      states_mid[sc_name] = 0.5 * (states[sc_name] + states_0[sc_name])
+
     for sc_name in self._params.transport_scalars_names:
       # Mid-point scalar for time integration.
-      sc_mid = 0.5 * (states[sc_name] + states_0[sc_name])
+      sc_mid = states_mid[sc_name]
 
       # Compute RHS at mid-point.
       rhs = self._scalar_rhs(
           sc_name,
           sc_mid,
-          states,
+          states_mid,
           additional_states,
       )
 

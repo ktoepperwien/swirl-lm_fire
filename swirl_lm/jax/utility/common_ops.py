@@ -68,12 +68,14 @@ def array_scatter_1d_update(
       updated.
   """
   axis_index = grid_params.get_axis_index(axis)
+  if hasattr(updates, 'ndim') and updates.ndim == 3:  # pyrefly: ignore[union-attr]
+    updates = jnp.squeeze(updates, axis=axis_index)
   if axis_index == 0:
-    array = array.at[index, :, :].set(jnp.squeeze(updates))
+    array = array.at[index, :, :].set(updates)
   elif axis_index == 1:
-    array = array.at[:, index, :].set(jnp.squeeze(updates))
+    array = array.at[:, index, :].set(updates)
   else:
-    array = array.at[:, :, index].set(jnp.squeeze(updates))
+    array = array.at[:, :, index].set(updates)
   return array
 
 
@@ -1014,7 +1016,9 @@ def get_face(
 
   size = list(value.shape)
   size[axis_index] = 1  # pyrefly: ignore[unsupported-operation]
-  return jnp.squeeze(jax.lax.dynamic_slice(value, start_idx, size))
+  return jnp.squeeze(
+      jax.lax.dynamic_slice(value, start_idx, size), axis=axis_index
+  )
 
 
 def slice_field(

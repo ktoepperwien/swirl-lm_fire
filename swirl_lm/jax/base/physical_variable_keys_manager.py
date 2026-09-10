@@ -113,9 +113,9 @@ class BoundaryConditionKeysHelper(PhysicalVariableKeysHelper):
     (variable_name]_(dimension)_(face).
   For example, 'bc_w_2_0' refers to the boundary condition of 'w' in dimension 2
   on face 0 (the lower face).
-  The dimension should correspond to
-  `data_axis_order = grid_parametrization.GridParametrization.data_axis_order`.
-  If data_axis_order=('z','x','y'), then dimension 1 refers to axis 'x'.
+  The dimension follows the physical convention: 0 corresponds to axis 'x',
+  1 to 'y', and 2 to 'z'. This matches how `bc[varname][dim]` is indexed in
+  the `SwirlLMParameters.bc` structure.
   """
 
   def __init__(self):
@@ -170,11 +170,17 @@ class BoundaryConditionKeysHelper(PhysicalVariableKeysHelper):
         continue
 
       (varname, dim, face) = boundary_info
-      if varname not in bc:
+      if (
+          varname not in bc
+          or bc[varname] is None
+          or bc[varname][dim][face] is None
+      ):
         continue
 
       bc_value = []
-      axis = grid_params.data_axis_order[dim]
+      # `dim` in the key follows the physical convention (0=x, 1=y, 2=z),
+      # matching how `bc[varname][dim]` is indexed.
+      axis = ('x', 'y', 'z')[dim]
       for i in range(grid_params.halo_width):
         bc_value.append(common_ops.get_face(value, axis, face, i, grid_params))
 

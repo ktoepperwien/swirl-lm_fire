@@ -492,7 +492,7 @@ class Wood(object):
         c_f=self.c_f,
         t_0_ivf=params.t_0_ivf,
         t_1_ivf=params.t_1_ivf,
-        periodic_dims=swirl_lm_params.periodic_dims,
+        periodic_dims=swirl_lm_params.periodic_dims,  # pyrefly: ignore[bad-argument-type]
         halo_width=swirl_lm_params.halo_width,
         w_axis=params.w_axis,
         w_center=params.w_center,
