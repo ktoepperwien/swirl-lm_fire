@@ -140,7 +140,8 @@ def filter_2(
   for dim in range(3):
     if use_stretched_grid[dim]:
       # Approximate coefficients of the tophat filter with the Simpson's rule.
-      h_0 = additional_states[stretched_grid_util.h_key(dim)]
+      physical_dim = ('x', 'y', 'z').index(axes[dim])
+      h_0 = additional_states[stretched_grid_util.h_key(physical_dim)]
       h_1 = shift_dn_ops[dim](h_0)
       w_0 = (0.5 * (h_0 - h_1) - (h_0 - h_1) ** 2 / (6.0 * h_0) + h_1 / 3.0) / (
           h_0 + h_1

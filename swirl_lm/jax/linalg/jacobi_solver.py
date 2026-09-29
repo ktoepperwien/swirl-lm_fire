@@ -65,6 +65,7 @@ def _generate_weights_and_modified_rhs(
     rhs: ScalarField,
     additional_states: dict[str, jax.Array],
     use_stretched_grid: tuple[bool, ...],
+    grid_params: grid_parametrization.GridParametrization | None = None,
 ) -> tuple[ScalarField, ScalarField, ScalarField, ScalarField]:
   """Generates the 3 metric-weight coefficients and modified RHS.
 
@@ -82,14 +83,21 @@ def _generate_weights_and_modified_rhs(
     rhs: The right-hand side of the pressure equation.
     additional_states: Dict containing stretched grid scale factors.
     use_stretched_grid: Whether each dimension uses stretched grid.
+    grid_params: Optional grid parametrization for data_axis_order.
 
   Returns:
     Tuple (w0, w1, w2, rhs_modified).
   """
+  data_order = (
+      list(grid_params.data_axis_order)
+      if grid_params is not None
+      else ['z', 'x', 'y']
+  )
   h = []
   for dim in range(3):
     if use_stretched_grid[dim]:
-      h_key = stretched_grid_util.h_key(dim)
+      physical_dim = ('x', 'y', 'z').index(data_order[dim])
+      h_key = stretched_grid_util.h_key(physical_dim)
       h.append(additional_states[h_key])
     else:
       # For uniform dimensions, h = 1 (unit scale factor). Must be a full
@@ -168,7 +176,7 @@ class JacobiSolver(base_poisson_solver.PoissonSolver):
       additional_states = {}
 
     w0, w1, w2, rhs_mod = _generate_weights_and_modified_rhs(
-        rhs, additional_states, self._use_stretched_grid
+        rhs, additional_states, self._use_stretched_grid, self._grid_params
     )
 
     if halo_update_fn is None:
@@ -210,7 +218,7 @@ class JacobiSolver(base_poisson_solver.PoissonSolver):
       additional_states = {}
 
     w0, w1, w2, rhs_mod = _generate_weights_and_modified_rhs(
-        rhs, additional_states, self._use_stretched_grid
+        rhs, additional_states, self._use_stretched_grid, self._grid_params
     )
 
     if self._three_weight_solver is None:

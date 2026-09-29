@@ -14,12 +14,21 @@
 
 """A library of boundary condition related utility functions."""
 
+from collections.abc import Sequence
 import enum
-from typing import TypeAlias
+from typing import Any, Literal, TypeAlias
 
 from absl import logging
+import jax
+import jax.numpy as jnp
+from jax.sharding import Mesh  # pylint: disable=g-importing-member
+from jax.sharding import NamedSharding  # pylint: disable=g-importing-member
+from jax.sharding import PartitionSpec as P  # pylint: disable=g-importing-member
+import numpy as np
 from swirl_lm.jax.base import physical_variable_keys_manager
 from swirl_lm.jax.communication import halo_exchange
+from swirl_lm.jax.utility import common_ops
+from swirl_lm.jax.utility import grid_parametrization
 from swirl_lm.jax.utility import types
 
 BoundaryConditionDict: TypeAlias = dict[
@@ -233,3 +242,334 @@ def get_keys_for_boundary_condition(
           )
           keys_for_bc.append(additional_state_key_for_bc)
   return keys_for_bc
+
+
+_BC_KEY_HELPER = physical_variable_keys_manager.BoundaryConditionKeysHelper()
+
+
+def is_bc_key(key: str) -> bool:
+  """Checks if `key` is a standard boundary condition key (e.g., `bc_u_0_0`)."""
+  return _BC_KEY_HELPER.parse_key(key) is not None
+
+
+def parse_bc_key(key: str) -> tuple[str, int, int] | None:
+  """Parses a boundary condition key into `(varname, dim, face)`.
+
+  Args:
+    key: The key to parse, expected to match `bc_{var}_{dim}_{face}`.
+
+  Returns:
+    A tuple of (varname, dim, face) if valid, else None.
+  """
+  return _BC_KEY_HELPER.parse_key(key)
+
+
+def _expand_and_pad_2d_plane(
+    plane: types.ScalarField,
+    halo_width: int,
+    pad_mode: str = 'edge',
+) -> types.ScalarField:
+  """Tiles a 2D plane along the normal axis and pads the in-plane dimensions."""
+  tiled = jnp.tile(jnp.expand_dims(plane, 0), [halo_width + 1, 1, 1])
+  return jnp.pad(
+      tiled,
+      pad_width=((0, 0), (halo_width, halo_width), (halo_width, halo_width)),
+      mode=pad_mode,
+  )
+
+
+def boundary_plane_to_bc(
+    plane_or_tensor: types.ScalarField,
+    dim: int,
+    halo_width: int,
+    grid_params: grid_parametrization.GridParametrization | None = None,
+    pad_mode: str = 'edge',
+) -> types.ScalarField:
+  """Arranges a 2D boundary plane or 3D normal profile into the 3D BC array format.
+
+  The boundary face dimension has size `halo_width + 1` (tiled across halos
+  and the boundary layer, or preserving the provided normal profile). The
+  in-plane dimensions are padded with `pad_mode` for halo layers. The output is
+  transposed to match `grid_params.data_axis_order`.
+
+  Args:
+    plane_or_tensor: A 2D array of shape `(n_plane_0, n_plane_1)` or a 3D array
+      of shape `(halo_width + 1, n_plane_0, n_plane_1)` along the boundary.
+    dim: The normal physical dimension index (0, 1, or 2) corresponding to 'x',
+      'y', 'z'.
+    halo_width: The width of halo layers.
+    grid_params: Optional grid parametrization for data_axis_order awareness.
+    pad_mode: Padding mode for in-plane halo layers (e.g. 'edge', 'constant').
+
+  Returns:
+    A 3D array formatted for boundary condition storage.
+  """
+  if dim not in range(3):
+    raise ValueError(f'Dimension has to be one of 0, 1, and 2. Given {dim}.')
+  plane_dims = [d for d in range(3) if d != dim]
+  if plane_or_tensor.ndim == 2:
+    boundary_tensor = _expand_and_pad_2d_plane(
+        plane_or_tensor, halo_width, pad_mode=pad_mode
+    )
+  elif plane_or_tensor.ndim == 3:
+    if plane_or_tensor.shape[0] != halo_width + 1:
+      raise ValueError(
+          'Expected first dimension of 3D profile to have size'
+          f' {halo_width + 1}, but got {plane_or_tensor.shape[0]}.'
+      )
+    boundary_tensor = jnp.pad(
+        plane_or_tensor,
+        pad_width=((0, 0), (halo_width, halo_width), (halo_width, halo_width)),
+        mode=pad_mode,
+    )
+  else:
+    raise ValueError(
+        'Expected 2D plane or 3D normal profile for boundary condition, but'
+        f' got array with ndim={plane_or_tensor.ndim}.'
+    )
+
+  physical_order = [dim] + plane_dims
+  if grid_params is not None:
+    data_order = list(grid_params.data_axis_order)
+  else:
+    data_order = ['z', 'x', 'y']
+  axes_names = ['x', 'y', 'z']
+  perm = [
+      physical_order.index(axes_names.index(data_order[j])) for j in range(3)
+  ]
+  return jnp.transpose(boundary_tensor, perm)
+
+
+def extract_bc_face_planes(
+    bc_tensor: types.ScalarField,
+    dim: int,
+    face: Literal[0, 1],
+    halo_width: int,
+    grid_params: grid_parametrization.GridParametrization,
+) -> list[types.ScalarField]:
+  """Extracts `halo_width` 2D face planes from a 3D boundary condition tensor.
+
+  Args:
+    bc_tensor: A 3D tensor containing boundary condition values in
+      `grid_params.data_axis_order`.
+    dim: Physical dimension index (0='x', 1='y', 2='z').
+    face: Boundary face (0 for low, 1 for high).
+    halo_width: The width of halo layers.
+    grid_params: Grid parametrization object.
+
+  Returns:
+    A list of `halo_width` 2D face planes ordered from low to high coordinate,
+    as expected by `halo_exchange`.
+  """
+  axis = ('x', 'y', 'z')[dim]
+  bc_planes = []
+  for i in range(halo_width):
+    bc_planes.append(common_ops.get_face(bc_tensor, axis, face, i, grid_params))
+  if face == 1:
+    bc_planes = bc_planes[::-1]
+  return bc_planes
+
+
+def get_bc_partition_spec(
+    key: str,
+    mesh: Mesh,
+    grid_params: grid_parametrization.GridParametrization | None = None,
+) -> P:
+  """Returns the `PartitionSpec` for a 3D boundary condition variable.
+
+  The boundary condition array dimensions match `grid_params.data_axis_order`
+  (or default `('z', 'x', 'y')` if `grid_params` is None). The normal dimension
+  has size `halo_width + 1` and is unpartitioned (`None`). The other two
+  dimensions (in the boundary plane) are sharded along their respective mesh
+  axes.
+
+  Args:
+    key: The boundary condition key, e.g. `bc_u_0_0`.
+    mesh: The JAX `Mesh` defining device layout.
+    grid_params: Optional grid parametrization. If mesh axis names do not match
+      physical axes ('x', 'y', 'z'), position is inferred from
+      `grid_params.data_axis_order`.
+
+  Returns:
+    A `PartitionSpec` matching the rank-3 boundary condition array.
+
+  Raises:
+    ValueError: If `key` is not a valid boundary condition key.
+  """
+  info = parse_bc_key(key)
+  if info is None:
+    raise ValueError(f'{key} is not a valid boundary condition key.')
+  _, dim, _ = info
+  normal_axis = ('x', 'y', 'z')[dim]
+
+  # Determine physical axis corresponding to each dimension of the 3D BC array.
+  if grid_params is not None:
+    data_order = list(grid_params.data_axis_order)
+  elif all(a in ('x', 'y', 'z') for a in mesh.axis_names):
+    data_order = list(mesh.axis_names)
+  else:
+    data_order = ['z', 'x', 'y']
+
+  spec = []
+  for j, axis in enumerate(data_order):
+    if axis == normal_axis:
+      spec.append(None)
+    elif axis in mesh.axis_names:
+      spec.append(axis)
+    elif grid_params is not None and axis in grid_params.data_axis_order:
+      data_dim = grid_params.data_axis_order.index(axis)
+      spec.append(mesh.axis_names[data_dim])
+    else:
+      spec.append(mesh.axis_names[j])
+  return P(*spec)
+
+
+def get_bc_sharding(
+    key: str,
+    mesh: Mesh,
+    grid_params: grid_parametrization.GridParametrization | None = None,
+) -> NamedSharding:
+  """Returns the `NamedSharding` for a boundary condition variable."""
+  return NamedSharding(mesh, get_bc_partition_spec(key, mesh, grid_params))
+
+
+def block_bc_field(
+    key: str,
+    per_replica_states: Sequence[dict[str, Any]],
+    mesh: Mesh,
+    grid_params: grid_parametrization.GridParametrization | None = None,
+) -> jax.Array:
+  """Assembles per-replica 3D BC fields into a single global array.
+
+  The boundary face dimension has size `halo_width + 1` and is not partitioned
+  across replicas. The other two dimensions (in the boundary plane) are sharded
+  across replicas along their respective mesh axes and concatenated here.
+
+  Args:
+    key: The boundary condition key, e.g. `bc_u_0_0`.
+    per_replica_states: Sequence of state dicts from each replica, ordered by
+      replica id.
+    mesh: The JAX `Mesh` defining device layout.
+    grid_params: Optional grid parametrization.
+
+  Returns:
+    A global 3D array combining all per-replica shards.
+
+  Raises:
+    ValueError: If `key` is not a valid boundary condition key or not found.
+  """
+  info = parse_bc_key(key)
+  if info is None:
+    raise ValueError(f'{key} is not a valid boundary condition key.')
+  _, dim, face = info
+  num_replicas = len(per_replica_states)
+  sample = next((s[key] for s in per_replica_states if key in s), None)
+  if sample is None:
+    raise ValueError(f'Key {key} not found in any replica state.')
+  if num_replicas == 1:
+    return jnp.asarray(sample)
+
+  normal_axis = ('x', 'y', 'z')[dim]
+  plane_dims = [d for d in range(3) if d != dim]
+  axis_0 = ('x', 'y', 'z')[plane_dims[0]]
+  axis_1 = ('x', 'y', 'z')[plane_dims[1]]
+
+  # Determine physical axis ordering of the 3D BC array.
+  if grid_params is not None:
+    data_order = list(grid_params.data_axis_order)
+  elif all(a in ('x', 'y', 'z') for a in mesh.axis_names):
+    data_order = list(mesh.axis_names)
+  else:
+    data_order = ['z', 'x', 'y']
+
+  array_axis_0 = data_order.index(axis_0)
+  array_axis_1 = data_order.index(axis_1)
+
+  mesh_axis_0 = (
+      axis_0  # pylint: disable=g-long-ternary
+      if axis_0 in mesh.axis_names
+      else (
+          mesh.axis_names[grid_params.data_axis_order.index(axis_0)]
+          if grid_params is not None
+          else mesh.axis_names[data_order.index(axis_0)]
+      )
+  )
+  mesh_axis_1 = (
+      axis_1  # pylint: disable=g-long-ternary
+      if axis_1 in mesh.axis_names
+      else (
+          mesh.axis_names[grid_params.data_axis_order.index(axis_1)]
+          if grid_params is not None
+          else mesh.axis_names[data_order.index(axis_1)]
+      )
+  )
+  mesh_normal = (
+      normal_axis  # pylint: disable=g-long-ternary
+      if normal_axis in mesh.axis_names
+      else (
+          mesh.axis_names[grid_params.data_axis_order.index(normal_axis)]
+          if grid_params is not None
+          else mesh.axis_names[data_order.index(normal_axis)]
+      )
+  )
+
+  computation_shape = tuple(mesh.shape[name] for name in mesh.axis_names)
+  c_0 = mesh.shape[mesh_axis_0]
+  c_1 = mesh.shape[mesh_axis_1]
+
+  target_normal_coord = 0 if face == 0 else (mesh.shape[mesh_normal] - 1)
+
+  grid_bc = np.full((c_0, c_1), None, dtype=object)
+  for idx in range(num_replicas):
+    multi_idx = np.unravel_index(idx, computation_shape)
+    replica_coords = {
+        name: multi_idx[i] for i, name in enumerate(mesh.axis_names)
+    }
+    coord_0 = replica_coords[mesh_axis_0]
+    coord_1 = replica_coords[mesh_axis_1]
+    if key in per_replica_states[idx]:
+      if replica_coords[mesh_normal] == target_normal_coord:
+        grid_bc[coord_0, coord_1] = per_replica_states[idx][key]
+      elif grid_bc[coord_0, coord_1] is None:
+        grid_bc[coord_0, coord_1] = per_replica_states[idx][key]
+
+  if any(v is None for v in grid_bc.flat):
+    raise ValueError(
+        f'Missing replica shards when assembling {key} on mesh {mesh.shape}.'
+    )
+
+  rows = []
+  for i in range(c_0):
+    row = jnp.concatenate(
+        [grid_bc[i, j] for j in range(c_1)], axis=array_axis_1
+    )
+    rows.append(row)
+  return jnp.concatenate(rows, axis=array_axis_0)
+
+
+def reconstruct_bc_field(
+    key: str,
+    per_replica_states: Sequence[dict[str, Any]],
+    mesh: Mesh,
+    grid_params: grid_parametrization.GridParametrization | None = None,
+) -> jax.Array:
+  """Reconstructs and shards a 3D boundary condition field across replicas.
+
+  Assembles per-replica 3D BC fields into a global array sharded with
+  `NamedSharding` across the mesh.
+
+  Args:
+    key: The boundary condition key, e.g. `bc_u_0_0`.
+    per_replica_states: Sequence of state dicts, one per device.
+    mesh: The JAX `Mesh` defining device layout.
+    grid_params: Optional grid parametrization.
+
+  Returns:
+    A globally-sharded JAX Array.
+  """
+  full_bc = block_bc_field(key, per_replica_states, mesh, grid_params)
+  sharding_bc = get_bc_sharding(key, mesh, grid_params)
+  return jax.device_put(full_bc, sharding_bc)
+
+
+distribute_bc_state = reconstruct_bc_field

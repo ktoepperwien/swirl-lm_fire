@@ -666,7 +666,7 @@ class GeophysicalFlow():
       )
       inflow_bcast_fn = functools.partial(
           geophysical_flow_common.broadcast_vertical_profile_for_inflow,
-          g_dim=self._g_dim,
+          g_dim=self._g_dim,  # pyrefly: ignore[bad-argument-type]
           inflow_dim=self.inflow.inflow_dim,
       )
       inflow_update_fn = functools.partial(update_mean, halos=halos_inflow)

@@ -45,6 +45,7 @@ import functools
 from google.protobuf import text_format
 import jax
 import jax.numpy as jnp
+from swirl_lm.equations import pressure_pb2
 from swirl_lm.jax.base import parameters as parameters_lib
 from swirl_lm.jax.base import physical_variable_keys_manager
 from swirl_lm.jax.boundary_condition import boundary_condition_utils
@@ -56,6 +57,7 @@ from swirl_lm.jax.linalg import poisson_solver
 from swirl_lm.jax.linalg import poisson_solver_pb2
 from swirl_lm.jax.numerics import filters
 from swirl_lm.jax.numerics import interpolation
+from swirl_lm.jax.physics.thermodynamics import manager as thermodynamics_manager
 from swirl_lm.jax.utility import common_ops
 from swirl_lm.jax.utility import types
 from swirl_lm.physics.thermodynamics import thermodynamics_pb2
@@ -132,6 +134,7 @@ class Pressure:
   def __init__(
       self,
       params: parameters_lib.SwirlLMParameters,
+      thermodynamics: thermodynamics_manager.ThermodynamicsManager,
       solver_option: poisson_solver_pb2.PoissonSolver | None = None,
       num_d_rho_filter: int = _DEFAULT_NUM_D_RHO_FILTER,
   ):
@@ -139,6 +142,8 @@ class Pressure:
 
     Args:
       params: The simulation parameters.
+      thermodynamics: The thermodynamics manager for computing reference density
+        in flow-dependent pressure BCs.
       solver_option: The Poisson solver configuration proto. If None, uses a
         default CG solver.
       num_d_rho_filter: Number of density difference filter applications.
@@ -147,6 +152,7 @@ class Pressure:
     self._kernel_op = params.kernel_op
     self._deriv_lib = params.deriv_lib
     self._grid_params = params.grid_params
+    self._thermodynamics = thermodynamics
 
     if solver_option is not None:
       self._solver_option = solver_option
@@ -275,7 +281,8 @@ class Pressure:
     g_axis = ('x', 'y', 'z')[g_dim]
 
     # Compute buoyancy source.
-    rho_0 = additional_states.get('rho_ref', jnp.ones_like(states['p']))
+    zz = additional_states.get('zz', None)
+    rho_0 = self._thermodynamics.rho_ref(zz, additional_states)  # pyrefly: ignore[bad-argument-type]
     b_raw = eq_utils.buoyancy_source(
         states['rho_thermal'],
         rho_0,
@@ -302,24 +309,97 @@ class Pressure:
       b_wall = (3.0 * b_first - b_second) / 2.0
       # Multiply by the grid spacing at the wall, which may differ from
       # the interior spacing on stretched grids.
-      first_spacing, last_spacing = _get_first_last_grid_spacing(  # pylint: disable=unused-variable
-          self._params, g_dim
-      )
+      first_spacing, _ = _get_first_last_grid_spacing(self._params, g_dim)
       dz = first_spacing
       bc_value = dz * b_wall
-      zeros = [jnp.zeros_like(bc_value)] * (halo_width - 1)
-      bc_planes = zeros + [bc_value]
-      return (halo_exchange_utils.BCType.NEUMANN, bc_planes)
+      return (
+          halo_exchange_utils.BCType.NEUMANN,
+          [jnp.zeros_like(bc_value)] * (halo_width - 1) + [bc_value],
+      )
     else:
       # Upper face: p_N = p_{N-2} + 2*dz*b_{N-1}.
       p_second = common_ops.get_face(
           states['p'], g_axis, face, halo_width + 1, self._grid_params  # pyrefly: ignore[bad-argument-type]
       )
       # Use last grid spacing for stretched grids.
-      _, last_spacing = _get_first_last_grid_spacing(self._params, g_dim)
-      bc_value = p_second + 2.0 * last_spacing * b_first
-      bc_planes = [bc_value] * halo_width
-      return (halo_exchange_utils.BCType.DIRICHLET, bc_planes)
+      data_dim = self._grid_params.get_axis_index(g_axis)
+      if self._params.use_stretched_grid[data_dim]:  # pyrefly: ignore[bad-index]
+        coord = self._grid_params.global_xyz_with_halos[data_dim]  # pyrefly: ignore[bad-index]
+        if halo_width > 1:
+          dz_last = (
+              float(coord[-(halo_width - 1)] - coord[-(halo_width + 1)]) / 2.0
+          )
+        else:
+          dz_last = float(coord[-1] - coord[-2])
+      else:
+        dz_last = self._params.grid_spacings[data_dim]  # pyrefly: ignore[bad-index]
+      bc_value = p_second + 2.0 * dz_last * b_first
+      return (
+          halo_exchange_utils.BCType.DIRICHLET,
+          [bc_value] * halo_width,
+      )
+
+  def _pressure_bc_approximate_vertical(
+      self,
+      states: ScalarFieldMap,
+      additional_states: ScalarFieldMap,
+      face: int,
+  ) -> tuple[halo_exchange_utils.BCType, list[ScalarField]]:
+    """Sets approximate buoyancy-balanced vertical pressure BC.
+
+    Original implementation where pressure and buoyancy at the wall only
+    approximately balance. Uses Neumann BC on both faces with buoyancy
+    averaged between the first interior node and the halo-adjacent node.
+
+    Args:
+      states: Flow field variables (must include 'rho_thermal', 'p').
+      additional_states: Helper variables (must include 'zz' for rho_ref).
+      face: Which face: 0 (bottom) or 1 (top).
+
+    Returns:
+      A tuple of (BCType, bc_planes) for the halo exchange.
+    """
+    g_dim = self._params.g_dim
+    assert g_dim is not None
+    halo_width = self._params.halo_width
+    g_axis = ('x', 'y', 'z')[g_dim]
+
+    zz = additional_states.get('zz', None)
+    rho_0 = self._thermodynamics.rho_ref(zz, additional_states)  # pyrefly: ignore[bad-argument-type]
+    b = eq_utils.buoyancy_source(
+        states['rho_thermal'],
+        rho_0,
+        self._params,
+        g_dim,
+        additional_states,
+    )
+
+    # Average buoyancy between first interior and halo-adjacent nodes.
+    b_first = common_ops.get_face(
+        b, g_axis, face, halo_width, self._grid_params  # pyrefly: ignore[bad-argument-type]
+    )
+    b_second = common_ops.get_face(
+        b, g_axis, face, halo_width - 1, self._grid_params  # pyrefly: ignore[bad-argument-type]
+    )
+    bc_value = 0.5 * (b_first + b_second)
+
+    # Multiply by grid spacing for NEUMANN BC.
+    first_spacing, last_spacing = _get_first_last_grid_spacing(
+        self._params, g_dim
+    )
+    dz = first_spacing if face == 0 else last_spacing
+    bc_value = dz * bc_value
+
+    if face == 0:
+      return (
+          halo_exchange_utils.BCType.NEUMANN,
+          [jnp.zeros_like(bc_value)] * (halo_width - 1) + [bc_value],
+      )
+    else:
+      return (
+          halo_exchange_utils.BCType.NEUMANN,
+          [bc_value] + [jnp.zeros_like(bc_value)] * (halo_width - 1),
+      )
 
   def update_pressure_bc_by_flow(
       self,
@@ -329,8 +409,12 @@ class Pressure:
     """Updates pressure BCs dynamically based on the flow field.
 
     When the gravity dimension has wall boundaries, the pressure BC at those
-    faces is set to balance with buoyancy. This prevents spurious vertical
-    forcing in atmospheric boundary layer simulations.
+    faces is set to balance with buoyancy. The treatment depends on the
+    ``vertical_bc_treatment`` proto setting:
+    - APPROXIMATE (default): Uses averaged buoyancy with Neumann BC on both
+      faces.
+    - PRESSURE_BUOYANCY_BALANCING: Uses extrapolated buoyancy with Neumann
+      on bottom and Dirichlet on top.
 
     Args:
       states: Flow field variables.
@@ -346,12 +430,22 @@ class Pressure:
         boundary_condition_utils.BoundaryType.SHEAR_WALL,
     )
 
+    # Determine vertical BC treatment from proto config.
+    vertical_bc = pressure_pb2.Pressure.APPROXIMATE
+    if self._params.pressure is not None:
+      vertical_bc = self._params.pressure.vertical_bc_treatment
+
     for face_idx in (0, 1):
       bt = self._params.bc_type[g_dim][face_idx]
       if bt in wall_types:
-        bc = self._pressure_bc_balanced_vertical(
-            states, additional_states, face_idx
-        )
+        if vertical_bc == pressure_pb2.Pressure.PRESSURE_BUOYANCY_BALANCING:
+          bc = self._pressure_bc_balanced_vertical(
+              states, additional_states, face_idx
+          )
+        else:
+          bc = self._pressure_bc_approximate_vertical(
+              states, additional_states, face_idx
+          )
         self._bc['p'][g_dim][face_idx] = bc  # pyrefly: ignore[unsupported-operation]
 
   def update_pressure_halos(

@@ -187,31 +187,39 @@ def local_stretched_grid_vars_from_global_xyz(
 
   Returns:
     A dictionary of stretched grid variables local to this replica. For
-    each stretched dimension d, contains:
+    each stretched dimension d (0 for x, 1 for y, 2 for z), contains:
       - COORDINATE_KEYS_3D[d]: 3D coordinate field
       - stretched_grid_util.h_key(d): scale factor on nodes (broadcastable)
       - stretched_grid_util.h_face_key(d): scale factor on faces (broadcastable)
   """
   gp = params.grid_params
-  core_n = gp.to_data_axis_order(gp.core_nx, gp.core_ny, gp.core_nz)
-  n = gp.to_data_axis_order(gp.nx, gp.ny, gp.nz)
-  domain_sizes = gp.to_data_axis_order(gp.lx, gp.ly, gp.lz)
-  # logical_coordinates is (ix, iy, iz) in physical xyz order; convert to
-  # data_axis_order so that indexing by dim gives the correct replica position.
-  lc = gp.to_data_axis_order(*logical_coordinates)
+  core_n_xyz = (gp.core_nx, gp.core_ny, gp.core_nz)
+  n_xyz = (gp.nx, gp.ny, gp.nz)
+  domain_sizes_xyz = (gp.lx, gp.ly, gp.lz)
+  use_stretched_grid_xyz = gp.to_xyz_order((
+      params.use_stretched_grid[0],
+      params.use_stretched_grid[1],
+      params.use_stretched_grid[2],
+  ))
+  periodic_dims_xyz = gp.to_xyz_order(gp.periodic_dims)
+  full_shape = gp.to_data_axis_order(gp.nx, gp.ny, gp.nz)
 
   local_vars: dict[str, jnp.ndarray] = {}
   for dim in range(3):
-    if not params.use_stretched_grid[dim]:
+    if not use_stretched_grid_xyz[dim]:
       continue
 
-    global_coord_no_halos = gp.global_xyz[dim]
-    global_coord_with_halos = gp.global_xyz_with_halos[dim]
+    axis = ('x', 'y', 'z')[dim]
+    tensor_axis = gp.get_axis_index(axis)
+    assert isinstance(tensor_axis, int)
+
+    global_coord_no_halos = gp.global_xyz[tensor_axis]  # pyrefly: ignore[bad-index]
+    global_coord_with_halos = gp.global_xyz_with_halos[tensor_axis]  # pyrefly: ignore[bad-index]
 
     # Compute scale factors from global coordinates.
-    if gp.periodic_dims[dim]:
+    if periodic_dims_xyz[dim]:
       global_h, global_h_face = _get_h_with_halos_periodic(
-          global_coord_no_halos, gp.halo_width, domain_sizes[dim]
+          global_coord_no_halos, gp.halo_width, domain_sizes_xyz[dim]
       )
     else:
       global_h, global_h_face = _get_h_with_halos_nonperiodic(
@@ -219,21 +227,20 @@ def local_stretched_grid_vars_from_global_xyz(
       )
 
     # Slice to local replica.
-    replica_idx = lc[dim]
-    start = replica_idx * core_n[dim]
+    replica_idx = logical_coordinates[dim]
+    start = replica_idx * core_n_xyz[dim]
 
-    coord_local = jnp.array(global_coord_with_halos[start : start + n[dim]])
-    h_local = jnp.array(global_h[start : start + n[dim]])
-    h_face_local = jnp.array(global_h_face[start : start + n[dim]])
+    coord_local = jnp.array(global_coord_with_halos[start : start + n_xyz[dim]])
+    h_local = jnp.array(global_h[start : start + n_xyz[dim]])
+    h_face_local = jnp.array(global_h_face[start : start + n_xyz[dim]])
 
     # Create 3D coordinate field by tiling along the other two dimensions.
-    coord_3d = _reshape_to_broadcastable(coord_local, dim)
-    shape_3d = [n[0], n[1], n[2]]
-    coord_3d = jnp.broadcast_to(coord_3d, shape_3d)
+    coord_3d = _reshape_to_broadcastable(coord_local, tensor_axis)
+    coord_3d = jnp.broadcast_to(coord_3d, full_shape)
 
     # Reshape scale factors for broadcastable use.
-    h_local = _reshape_to_broadcastable(h_local, dim)
-    h_face_local = _reshape_to_broadcastable(h_face_local, dim)
+    h_local = _reshape_to_broadcastable(h_local, tensor_axis)
+    h_face_local = _reshape_to_broadcastable(h_face_local, tensor_axis)
 
     local_vars[COORDINATE_KEYS_3D[dim]] = coord_3d
     local_vars[stretched_grid_util.h_key(dim)] = h_local

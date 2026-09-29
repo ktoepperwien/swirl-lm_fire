@@ -92,7 +92,8 @@ Usage example (restart from a previous checkpoint):
 """
 
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+import inspect
 import os
 import time
 from typing import Any
@@ -109,6 +110,7 @@ from jax.sharding import PartitionSpec as P  # pylint: disable=g-importing-membe
 import numpy as np
 from swirl_lm.base import parameters_pb2
 from swirl_lm.jax.base import parameters as parameters_lib
+from swirl_lm.jax.boundary_condition import boundary_condition_utils
 from swirl_lm.jax.boundary_condition import nonreflecting_boundary
 from swirl_lm.jax.core import simulation as simulation_lib
 from swirl_lm.jax.io import checkpoint as checkpoint_lib
@@ -212,8 +214,13 @@ def _get_state_keys(
   # Add stretched grid keys. In JAX all fields are 3D arrays, so scale
   # factors go into helper_var_keys and 3D coordinates into additional_keys.
   coordinate_keys_3d = ('xx', 'yy', 'zz')
+  use_stretched_grid_xyz = params.grid_params.to_xyz_order((
+      params.use_stretched_grid[0],
+      params.use_stretched_grid[1],
+      params.use_stretched_grid[2],
+  ))
   for dim in range(3):
-    if params.use_stretched_grid[dim]:
+    if use_stretched_grid_xyz[dim]:
       additional_keys.append(coordinate_keys_3d[dim])
       helper_var_keys.append(stretched_grid_util.h_key(dim))
       helper_var_keys.append(stretched_grid_util.h_face_key(dim))
@@ -317,6 +324,8 @@ def _init_fn(
 def _distribute_states(
     per_replica_states: list[dict[str, ScalarField]],
     mesh: Mesh,
+    grid_params: gp_lib.GridParametrization | None = None,
+    params: parameters_lib.SwirlLMParameters | None = None,
 ) -> dict[str, jax.Array]:
   """Assembles per-replica states into globally-sharded JAX arrays.
 
@@ -331,11 +340,14 @@ def _distribute_states(
     per_replica_states: List of state dicts, one per device, ordered by replica
       id.
     mesh: The JAX mesh defining device layout.
+    grid_params: Optional grid parametrization.
+    params: Optional SwirlLMParameters containing custom partition specs and
+      distributors.
 
   Returns:
     A single state dict of globally-sharded JAX arrays.
   """
-  all_keys = list(per_replica_states[0].keys())
+  all_keys = list(dict.fromkeys([k for s in per_replica_states for k in s]))  # pylint: disable=g-complex-comprehension
   sharding_3d = NamedSharding(mesh, P(*mesh.axis_names))
   sharding_replicated = NamedSharding(mesh, P())
   computation_shape = tuple(mesh.shape[name] for name in mesh.axis_names)
@@ -344,9 +356,23 @@ def _distribute_states(
   global_state: dict[str, jax.Array] = {}
 
   for key in all_keys:
-    sample = per_replica_states[0][key]
+    sample = next((s[key] for s in per_replica_states if key in s), None)
+    if sample is None:
+      continue
 
-    if np.ndim(sample) < 3:
+    if boundary_condition_utils.is_bc_key(key):
+      global_state[key] = boundary_condition_utils.distribute_bc_state(
+          key, per_replica_states, mesh, grid_params
+      )
+    elif params is not None and key in params.additional_state_distributors:
+      global_state[key] = params.additional_state_distributors[key](
+          key, per_replica_states, mesh, grid_params
+      )
+    elif params is not None and key in params.additional_state_partition_specs:
+      spec = params.additional_state_partition_specs[key]
+      sharding = NamedSharding(mesh, spec)
+      global_state[key] = jax.device_put(jnp.asarray(sample), sharding)
+    elif np.ndim(sample) < 3:
       # Scalar or low-rank (e.g. TIME_VARNAME, boundary face arrays):
       # replicate across all devices. All replicas should have the same value.
       global_state[key] = jax.device_put(
@@ -368,6 +394,54 @@ def _distribute_states(
       global_state[key] = jax.device_put(jnp.block(grid.tolist()), sharding_3d)
 
   return global_state
+
+
+def _shard_global_additional_states(
+    additional_states: Mapping[str, Any],
+    mesh: Mesh,
+    params: parameters_lib.SwirlLMParameters,
+) -> dict[str, jax.Array]:
+  """Places pre-existing, globally assembled caller arrays onto devices.
+
+  This function places pre-existing, globally assembled caller arrays onto
+  devices, whereas `_distribute_states` stitches together per-core subdomain
+  tiles.
+
+  Args:
+    additional_states: User-provided dictionary of additional state variables.
+    mesh: The device mesh.
+    params: Simulation parameters.
+
+  Returns:
+    A dictionary of sharded device arrays.
+  """
+  sharding_3d = NamedSharding(mesh, P(*mesh.axis_names))
+  sharding_replicated = NamedSharding(mesh, P())
+  sharded_states: dict[str, jax.Array] = {}
+  for key, val in additional_states.items():
+    if boundary_condition_utils.is_bc_key(key):
+      spec = boundary_condition_utils.get_bc_partition_spec(
+          key, mesh, params.grid_params
+      )
+      sharded_states[key] = jax.device_put(
+          jnp.asarray(val), NamedSharding(mesh, spec)
+      )
+    elif key in params.additional_state_partition_specs:
+      spec = params.additional_state_partition_specs[key]
+      sharded_states[key] = jax.device_put(
+          jnp.asarray(val), NamedSharding(mesh, spec)
+      )
+    elif np.ndim(val) == 0:
+      sharded_states[key] = jax.device_put(
+          jnp.asarray(val), sharding_replicated
+      )
+    elif np.ndim(val) == 3:
+      sharded_states[key] = jax.device_put(jnp.asarray(val), sharding_3d)
+    else:
+      sharded_states[key] = jax.device_put(
+          jnp.asarray(val), sharding_replicated
+      )
+  return sharded_states
 
 
 def _stateless_update_if_present(
@@ -430,13 +504,33 @@ def _update_additional_states(
 
   # 4. Call user-defined additional_states_update_fn.
   if params.additional_states_update_fn is not None:
-    updated = dict(
-        params.additional_states_update_fn(
-            states=essential_states,
-            additional_states=additional_states,
-            step_id=step_id,
-        )
-    )
+    fn = params.additional_states_update_fn
+    try:
+      sig = inspect.signature(fn)
+      accepts_params = 'params' in sig.parameters or any(
+          p.kind == inspect.Parameter.VAR_KEYWORD
+          for p in sig.parameters.values()
+      )
+    except (ValueError, TypeError):
+      accepts_params = False
+
+    if accepts_params:
+      updated = dict(
+          fn(
+              states=essential_states,
+              additional_states=additional_states,
+              step_id=step_id,
+              params=params,
+          )
+      )
+    else:
+      updated = dict(
+          fn(
+              states=essential_states,
+              additional_states=additional_states,
+              step_id=step_id,
+          )
+      )
 
   return updated
 
@@ -579,22 +673,15 @@ def run_simulation(
     per_replica_states.append(device_state)
 
   # Distribute across devices.
-  state = _distribute_states(per_replica_states, mesh)
+  state = _distribute_states(
+      per_replica_states, mesh, params.grid_params, params=params
+  )
 
   # Merge in user-provided additional_states.
   if additional_states is not None:
-    sharding_3d = NamedSharding(mesh, P(*mesh.axis_names))
-    for key, val in additional_states.items():
-      if key in state:
-        state[key] = val
-      else:
-        # Shard if 3D, replicate if scalar.
-        if np.ndim(val) == 0:
-          state[key] = jax.device_put(
-              jnp.asarray(val), NamedSharding(mesh, P())
-          )
-        else:
-          state[key] = jax.device_put(jnp.asarray(val), sharding_3d)
+    state.update(
+        _shard_global_additional_states(additional_states, mesh, params)
+    )
 
   # Override with checkpoint data if restarting.
   if restart_from is not None:
@@ -650,15 +737,26 @@ def run_simulation(
   # shard_map so that collective ops (ppermute, axis_index, psum) have
   # named-axis context, matching TF's `strategy.run(step_fn, ...)`.
 
-  # Build shard_map specs: only rank-3 fields get P(*axis_names).
-  # All other ranks (scalars, 2D inflow planes, 1D arrays) are replicated.
+  # Build shard_map specs: rank-3 fields get P(*axis_names).
+  # Boundary condition and helper states get their model-specific PartitionSpec.
+  # All other ranks (scalars, 1D arrays) are replicated.
   all_state_keys = sorted(state.keys())
   spec_3d = P(*mesh.axis_names)
   spec_replicated = P()
   in_specs = {}
   out_specs = {}
   for key in all_state_keys:
-    if np.ndim(state[key]) == 3:
+    if boundary_condition_utils.is_bc_key(key):
+      spec = boundary_condition_utils.get_bc_partition_spec(
+          key, mesh, params.grid_params
+      )
+      in_specs[key] = spec
+      out_specs[key] = spec
+    elif key in params.additional_state_partition_specs:
+      spec = params.additional_state_partition_specs[key]
+      in_specs[key] = spec
+      out_specs[key] = spec
+    elif np.ndim(state[key]) == 3:
       in_specs[key] = spec_3d
       out_specs[key] = spec_3d
     else:
@@ -679,11 +777,7 @@ def run_simulation(
 
       # Split state into essential and additional.
       ess = {k: state_carry[k] for k in essential_keys if k in state_carry}
-      add = {
-          k: state_carry[k]
-          for k in additional_keys + helper_var_keys
-          if k in state_carry
-      }
+      add = {k: v for k, v in state_carry.items() if k not in ess}
 
       # 1. Preprocess.
       if params.apply_preprocess and params.preprocessing_states_update_fn:
@@ -718,15 +812,17 @@ def run_simulation(
         )
 
         # Merge back.
-        updated_state = _stateless_update_if_present(updated_state, add)
         updated_state = _stateless_update_if_present(updated_state, ess)
 
-      # 5. Accumulate simulation time.
+      # 5. Merge additional states updates into updated_state.
+      updated_state.update(add)
+
+      # 6. Accumulate simulation time.
       updated_state[TIME_VARNAME] = state_carry[TIME_VARNAME] + jnp.float64(
           params.dt
       )
 
-      # 6. Merge updates back into state (pass-through keys like helper vars).
+      # 7. Merge updates back into state (pass-through keys like helper vars).
       new_state = _stateless_update_if_present(state_carry, updated_state)
 
       return (new_state, step_id + 1), None

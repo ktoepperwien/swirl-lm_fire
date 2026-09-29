@@ -1,0 +1,210 @@
+# proto-file: swirl_lm/base/parameters.proto
+# proto-message: SwirlLMParameters
+
+convection_scheme: CONVECTION_SCHEME_QUICK
+solver_procedure: VARIABLE_DENSITY
+time_integration_scheme: TIME_SCHEME_CN_EXPLICIT_ITERATION
+grid_params: {
+  computation_shape {
+    dim_0: 1
+    dim_1: 1
+    dim_2: 1
+  }
+  length {
+    dim_0: 2e4
+    dim_1: 1e4
+    dim_2: 2.4e2
+  }
+  grid_size {
+    dim_0: 256
+    dim_1: 128
+    dim_2: 6
+  }
+  periodic {
+    dim_0: false
+    dim_1: false
+    dim_2: true
+  }
+  dt: 0.1
+  kernel_size: 16
+  halo_width: 2
+}
+gravity_direction {
+  dim_0: 0.0
+  dim_1: -1.0
+  dim_2: 0.0
+}
+pressure {
+  solver {
+    jacobi {
+      max_iterations: 10
+      halo_width: 2
+      omega: 0.67
+    }
+  }
+  num_d_rho_filter: 3
+}
+p_thermal: 1.01325e5
+kinematic_viscosity: 1e-3
+use_sgs: true
+sgs_model {
+  smagorinsky {
+    c_s: 0.018
+    pr_t: 1.0
+    use_pr_t: false
+  }
+}
+scalars {
+  name: "theta"
+  diffusivity: 1e-3
+}
+scalars {
+  name: "ambient"
+  diffusivity: 1e-3
+  density: 1.22
+  molecular_weight: 0.02875
+  solve_scalar: false
+}
+thermodynamics {
+  ideal_gas_law {
+    const_theta: 300.0
+    cv_d: 716.9
+  }
+}
+additional_state_keys: "nu_t"
+additional_state_keys: "zz"
+boundary_conditions {
+  name: "u"
+  boundary_info {
+    dim: 0
+    location: 0
+    type: BC_TYPE_DIRICHLET
+    value: 0.0
+  }
+  boundary_info {
+    dim: 0
+    location: 1
+    type: BC_TYPE_DIRICHLET
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+}
+boundary_conditions {
+  name: "v"
+  boundary_info {
+    dim: 0
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 0
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 0
+    type: BC_TYPE_DIRICHLET
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 1
+    type: BC_TYPE_DIRICHLET
+    value: 0.0
+  }
+}
+boundary_conditions {
+  name: "w"
+  boundary_info {
+    dim: 0
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 0
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+}
+boundary_conditions {
+  name: "p"
+  boundary_info {
+    dim: 0
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 0
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+}
+boundary_conditions {
+  name: "theta"
+  boundary_info {
+    dim: 0
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 0
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 0
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+  boundary_info {
+    dim: 1
+    location: 1
+    type: BC_TYPE_NEUMANN
+    value: 0.0
+  }
+}

@@ -436,8 +436,8 @@ class Fire:
     self.firebench_states_update_fn = firebench_states_update_fn
 
     self.coriolis_force_fn = cloud_utils.coriolis_force(0.5497607357, {  # pyrefly: ignore[bad-argument-type]
-        'u': self.fire_utils.u_init,
-        'v': self.fire_utils.v_init,
+        'u': self.fire_utils.u_init,  # pyrefly: ignore[bad-assignment]
+        'v': self.fire_utils.v_init,  # pyrefly: ignore[bad-assignment]
         'w': 0.0
     }, 2)
 

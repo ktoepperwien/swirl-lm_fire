@@ -42,7 +42,9 @@ from typing import Callable, Sequence
 
 from absl import logging
 from google.protobuf import text_format
+import jax
 import jax.numpy as jnp
+from jax.sharding import PartitionSpec as P  # pylint: disable=g-importing-member
 import numpy as np
 from swirl_lm.base import parameters_pb2
 from swirl_lm.jax.base import physical_variable_keys_manager
@@ -403,6 +405,10 @@ class SwirlLMParameters:
     self._preprocessing_states_update_fn: Callable | None = None  # pylint: disable=g-bare-generic
     self._postprocessing_states_update_fn: Callable | None = None  # pylint: disable=g-bare-generic
 
+    # === Additional state partition specs and distributors ===
+    self.additional_state_partition_specs: dict[str, P] = {}
+    self.additional_state_distributors: dict[str, Callable] = {}  # pylint: disable=g-bare-generic
+
     # === Pre/Post Processing Options ===
     self._parse_pre_post_process_info(config)
 
@@ -647,8 +653,18 @@ class SwirlLMParameters:
 
   @property
   def use_stretched_grid(self) -> tuple[bool, ...]:
-    """Whether stretched grid is used per dimension."""
+    """Whether stretched grid is used per tensor axis, ordered in data_axis_order."""
     return self.grid_params.use_stretched_grid
+
+  @property
+  def global_xyz(self) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Global coordinates along each dimension, stored in data_axis_order."""
+    return self.grid_params.global_xyz
+
+  @property
+  def global_xyz_with_halos(self) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Global coordinates along each dimension with halos, in data_axis_order."""
+    return self.grid_params.global_xyz_with_halos
 
   # --- Callbacks ---
 

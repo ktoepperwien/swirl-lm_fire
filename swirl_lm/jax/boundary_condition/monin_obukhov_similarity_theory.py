@@ -37,16 +37,19 @@ Key functions:
   - surface_shear_stress_and_heat_flux_update_fn: Computes tau_13, tau_23,
     and q_3 for a given flow state. Used in the shear flux computation.
   - surface_flux_update_fn: Computes prescribed diffusive flux for scalars.
+  - neumann_bc_update_fn: Computes Neumann boundary conditions for variables.
   - monin_obukhov_similarity_theory_factory: Creates a MOST instance from
     simulation parameters.
 """
 
 
-from absl import logging
+from typing import Any
 import jax.numpy as jnp
 from swirl_lm.jax.base import parameters as parameters_lib
+from swirl_lm.jax.base import physical_variable_keys_manager
 from swirl_lm.jax.numerics import root_finder
 from swirl_lm.jax.utility import common_ops
+from swirl_lm.jax.utility import get_kernel_fn
 from swirl_lm.jax.utility import types
 from swirl_lm.physics import constants
 
@@ -86,15 +89,29 @@ class MoninObukhovSimilarityTheory:
     self.halo_width = params.halo_width
 
     # Height of first fluid layer above the ground.
-    if params.use_stretched_grid[vertical_dim]:
-      if hasattr(params, 'global_xyz') and params.global_xyz is not None:
-        self.height = params.global_xyz[vertical_dim][0]
+    use_stretched_grid = params.grid_params.to_xyz_order(
+        params.use_stretched_grid  # pyrefly: ignore[bad-argument-type]
+    )
+    if use_stretched_grid[vertical_dim]:
+      global_xyz_raw = (
+          params.global_xyz
+          if getattr(params, 'global_xyz', None) is not None
+          else getattr(params.grid_params, 'global_xyz', None)
+      )
+      if global_xyz_raw is not None:
+        global_xyz = params.grid_params.to_xyz_order(
+            global_xyz_raw  # pyrefly: ignore[bad-argument-type]
+        )
+        self.height = global_xyz[vertical_dim][0]
       else:
         raise ValueError(
             'Stretched grid with MOST requires `global_xyz` in params.'
         )
     else:
-      self.height = 0.5 * params.grid_spacings[vertical_dim]
+      grid_spacings = params.grid_params.to_xyz_order(
+          params.grid_spacings  # pyrefly: ignore[bad-argument-type]
+      )
+      self.height = 0.5 * grid_spacings[vertical_dim]
 
     assert (
         boundary_models := params.boundary_models
@@ -124,9 +141,12 @@ class MoninObukhovSimilarityTheory:
     self.horizontal_dims = [0, 1, 2]
     self.horizontal_dims.remove(vertical_dim)
     self._velocity_keys = ('u', 'v', 'w')
+    self.bc_manager = (
+        physical_variable_keys_manager.BoundaryConditionKeysHelper()
+    )
 
     # Map axes for get_face.
-    self._g_axis = params.grid_params.data_axis_order[vertical_dim]
+    self._g_axis = ('x', 'y', 'z')[vertical_dim]
 
     self.sea_level_ref: dict[str, float] = {
         var.name: var.value for var in most_params.sea_level_ref
@@ -376,10 +396,14 @@ class MoninObukhovSimilarityTheory:
     ln_z = jnp.log(height / self.z_0)
 
     momentum_keys = ('rho_u', 'rho_v', 'rho_w', 'u', 'v', 'w')
-    phi_val = phi_m if varname in momentum_keys else phi_h  # pylint: disable=unused-variable
+    phi_val = phi_m if varname in momentum_keys else phi_h
 
-    denom = (ln_z - phi_h) * (ln_z - phi_m)
-    return jnp.where(denom != 0.0, _KAPPA**2 / denom, 0.0)
+    denom = (ln_z - phi_val) * (ln_z - phi_m)
+    return jnp.where(
+        denom != 0.0,
+        _KAPPA**2 / jnp.where(denom != 0.0, denom, 1.0),
+        0.0,
+    )
 
   def surface_flux_update_fn(
       self,
@@ -457,6 +481,127 @@ class MoninObukhovSimilarityTheory:
     u_mag = jnp.sqrt(self.surface_gustiness**2 + u1**2 + u2**2)
     return -rho * c_h * u_mag * (phi_zm - phi_z0)
 
+  def neumann_bc_update_fn(
+      self,
+      kernel_op: get_kernel_fn.ApplyKernelOp,
+      states: ScalarFieldMap,
+      additional_states: dict[str, Any],
+  ) -> dict[str, Any]:
+    """Computes the Neumann BC for all variables.
+
+    Note: While this function is still used in geophysical_flow.py, it only sets
+    values in halos, so that the gradient computed from these values is
+    consistent with the shear stress/flux obtained from the MO similarity model.
+    However, its functionality has been superseded by the preceding functions
+    that set the diffusive fluxes directly. So in effect, this function is no
+    longer necessary and could be removed and deprecated.
+
+    Args:
+      kernel_op: An object holding a library of kernel operations.
+      states: A keyed dictionary of state variables.
+      additional_states: A list of states that are needed by the update fn, but
+        will not be updated by the main governing equations.
+
+    Returns:
+      An update function for `additional_states` that updates the boundary
+      condition.
+    """
+    # Computes the boundary condition for all variables in states except for
+    # those listed here.
+    excluded_vars = ('p', 'rho', self._velocity_keys[self.vertical_dim])
+
+    helper_states = {
+        'u': states['u'],
+        'v': states['v'],
+        'w': states['w'],
+        'rho': states['rho'],
+    }
+
+    def get_potential_temperature(variables):
+      """Retrieves potential temperature from a dictionary of variables."""
+      if 'T' in variables:
+        # Temperature is used interchangeably with potential temperature because
+        # they are almost identical on the ground.
+        return variables['T']
+      elif 'theta' in variables:
+        return variables['theta']
+      elif 'theta_li' in variables:
+        return variables['theta_li']
+      else:
+        return None
+
+    theta = get_potential_temperature(states)
+    if theta is None:
+      theta = get_potential_temperature(additional_states)
+    if theta is None:
+      raise ValueError(
+          'Potential temperature is required by the MOST model but is not'
+          ' provided.'
+      )
+    helper_states.update({'theta': theta})
+
+    # Get the turbulent viscosity and diffusivity.
+    nu_t = additional_states.get('nu_t', 0.0)
+    if (
+        self.params.sgs_model is not None
+        and self.params.sgs_model.WhichOneof('sgs_model_type') == 'smagorinsky'
+    ):
+      pr_t = self.params.sgs_model.smagorinsky.pr_t
+    elif (
+        self.params.sgs_model is not None
+        and self.params.sgs_model.WhichOneof('sgs_model_type')
+        == 'smagorinsky_lilly'
+    ):
+      pr_t = self.params.sgs_model.smagorinsky_lilly.pr_t
+    elif (
+        self.params.sgs_model is not None
+        and self.params.sgs_model.WhichOneof('sgs_model_type') == 'vreman'
+    ):
+      pr_t = self.params.sgs_model.vreman.pr_t
+    else:
+      # The turbulent Prandtl number is set to 1 for other SGS models.
+      pr_t = 1.0
+
+    d_t = nu_t / pr_t
+    nu_total = self.params.nu + nu_t
+
+    interp_fn = lambda f: 0.5 * kernel_op.apply_kernel_op(f, 'ks', self._g_axis)
+
+    additional_states_new = dict(additional_states)
+    for key, val in states.items():
+      bc_key = self.bc_manager.generate_bc_key(key, self.vertical_dim, 0)
+      if key in excluded_vars or bc_key not in additional_states:
+        continue
+
+      helper_states.update({'phi': val})
+      flux = self.surface_flux_update_fn(helper_states, key)
+
+      # Compute the gradient of the variable at the surface. Note that the
+      # diffusive flux is computed as: flux = -\rho D \nabla\phi \delta_{ik},
+      # where `k` indicates the vertical direction.
+      if key in self._velocity_keys:
+        d_total = nu_total
+      else:
+        d_total = self.params.diffusivity(key) + d_t
+      rho_d = states['rho'] * d_total
+      rho_d_face = -1.0 * common_ops.get_face(
+          interp_fn(rho_d),
+          self._g_axis,
+          0,
+          self.halo_width,
+          self.params.grid_params,
+      )
+      grad_phi = flux / rho_d_face
+
+      # Assume the outer halo layers retains the same value.
+      zeros = jnp.zeros_like(grad_phi)
+      bc = [zeros] * (self.halo_width - 1) + [grad_phi]
+      bc = [b * (self.height * 2.0) for b in bc]
+
+      additional_states_new[bc_key] = bc
+
+    return additional_states_new
+
 
 def monin_obukhov_similarity_theory_factory(
     params: parameters_lib.SwirlLMParameters,
@@ -489,24 +634,36 @@ def monin_obukhov_similarity_theory_factory(
     )
 
   # Verify height > surface roughness.
-  if params.use_stretched_grid[vertical_dim]:
-    if hasattr(params, 'global_xyz') and params.global_xyz is not None:
-      height = params.global_xyz[vertical_dim][0]
+  use_stretched_grid = params.grid_params.to_xyz_order(
+      params.use_stretched_grid  # pyrefly: ignore[bad-argument-type]
+  )
+  if use_stretched_grid[vertical_dim]:
+    global_xyz_raw = (
+        params.global_xyz
+        if getattr(params, 'global_xyz', None) is not None
+        else getattr(params.grid_params, 'global_xyz', None)
+    )
+    if global_xyz_raw is not None:
+      global_xyz = params.grid_params.to_xyz_order(
+          global_xyz_raw  # pyrefly: ignore[bad-argument-type]
+      )
+      height = global_xyz[vertical_dim][0]
     else:
       # Stretched grid without global_xyz: skip height check.
       height = None
   else:
-    height = 0.5 * params.grid_spacings[vertical_dim]
+    grid_spacings = params.grid_params.to_xyz_order(
+        params.grid_spacings  # pyrefly: ignore[bad-argument-type]
+    )
+    height = 0.5 * grid_spacings[vertical_dim]
 
   z_0_threshold = (
       _HEIGHT_TO_SURFACE_ROUGHNESS_RATIO_THRESHOLD * boundary_models.most.z_0
   )
-  if height is not None and height <= z_0_threshold:
-    logging.warning(
-        'Height of first fluid layer (%f m) is at or below the tolerated '
-        'surface roughness (%f m). Consider using a non-slip wall BC.',
-        height,
-        z_0_threshold,
-    )
+  assert height is None or height > z_0_threshold, (
+      f'The height of the first fluid layer ({height} m) is below the'
+      f' tolerated surface roughness ({z_0_threshold} m). MOST model should'
+      ' be disabled and replaced by a non-slip wall BC.'
+  )
 
   return MoninObukhovSimilarityTheory(params, vertical_dim)

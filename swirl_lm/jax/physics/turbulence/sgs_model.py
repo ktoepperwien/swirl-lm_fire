@@ -208,10 +208,15 @@ class SgsModel:
     # Use strain rate for velocity (3 components), gradient magnitude otherwise.
     if len(field_vars) == 3:
       s_ij = _strain_rate_tensor(du_dx)  # type: ignore[arg-type]
+      s_mag = _strain_rate_magnitude(s_ij)  # type: ignore[arg-type]
     else:
-      s_ij = du_dx
+      # For scalar fields, compute gradient magnitude |∇φ| directly.
+      # du_dx is [[dφ/d0, dφ/d1, dφ/d2]] — a list of 1 list of 3 components.
+      grad_phi = du_dx[0]
+      s_mag = jnp.sqrt(
+          sum(g**2 for g in grad_phi)  # pyrefly: ignore[bad-argument-type]
+      )
 
-    s_mag = _strain_rate_magnitude(s_ij)  # type: ignore[arg-type]
     delta_sq = self._delta_square(field_vars[0], delta_formula)
 
     return c_s_field**2 * delta_sq * s_mag

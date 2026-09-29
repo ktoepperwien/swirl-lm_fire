@@ -55,6 +55,7 @@ from jax.sharding import PartitionSpec as P  # pylint: disable=g-importing-membe
 import numpy as np
 from swirl_lm.base import parameters_pb2
 from swirl_lm.jax.base import parameters as parameters_lib
+from swirl_lm.jax.boundary_condition import boundary_condition_utils
 from swirl_lm.jax.core import driver as driver_lib
 from swirl_lm.jax.core import simulation as simulation_lib
 from swirl_lm.jax.equations import common
@@ -800,6 +801,34 @@ class TgvDriverMultiDeviceTest(absltest.TestCase):
     expected_time = num_steps * params.dt
     actual_time = float(state[driver_lib.TIME_VARNAME])
     np.testing.assert_allclose(actual_time, expected_time, rtol=1e-6)
+
+  def test_run_simulation_with_boundary_condition_additional_states(self):
+    """Verifies run_simulation accepts boundary condition additional_states."""
+    params = self._make_params()
+    gp = params.grid_params
+    plane_dims = [d for d in range(3) if d != 0]
+    full_sizes = (gp.fx, gp.fy, gp.fz)
+    plane_2d = jnp.ones(
+        (full_sizes[plane_dims[0]], full_sizes[plane_dims[1]]),
+        dtype=jnp.float32,
+    )
+    bc_arr = boundary_condition_utils.boundary_plane_to_bc(
+        plane_2d,
+        dim=0,
+        halo_width=params.halo_width,
+        grid_params=gp,
+    )
+    additional_states = {
+        'bc_u_0_0': bc_arr,
+    }
+    state = driver_lib.run_simulation(
+        params=params,
+        init_fn=_tgv_driver_init_fn,
+        num_steps=2,
+        additional_states=additional_states,
+    )
+    self.assertIn('bc_u_0_0', state)
+    self.assertEqual(state['bc_u_0_0'].shape, bc_arr.shape)
 
 
 if __name__ == '__main__':

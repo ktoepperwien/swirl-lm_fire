@@ -472,6 +472,8 @@ class GridParametrization(object):
     )
     self.kernel_size = params.kernel_size
 
+    # Whether stretched grid is used per dimension, stored in data_axis_order
+    # (matching periodic_dims, grid_spacings, and global_xyz).
     self.use_stretched_grid = self.to_data_axis_order(
         params.stretched_grid_files.HasField('dim_x'),
         params.stretched_grid_files.HasField('dim_y'),
@@ -959,7 +961,8 @@ class GridParametrization(object):
     """
     axis_index = self.get_axis_index(axis)
     if self.use_stretched_grid[axis_index]:  # pyrefly: ignore[bad-index]
-      return additional_states[stretched_grid_util.h_key(axis_index)]  # pyrefly: ignore[bad-argument-type]
+      physical_dim = ('x', 'y', 'z').index(axis)
+      return additional_states[stretched_grid_util.h_key(physical_dim)]
     else:
       n = self.get_axis_entry(self.nx, self.ny, self.nz, axis)
       h = self.grid_spacings[axis_index] * jnp.ones(n)  # pyrefly: ignore[bad-index]

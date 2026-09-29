@@ -217,8 +217,19 @@ def diffusion_scalar_factory(
       plane = jnp.expand_dims(q_3, axis=axis_index)
       start_idx = [0, 0, 0]
       start_idx[axis_index] = params.halo_width
-      fluxes_face[g_dim] = jax.lax.dynamic_update_slice(
+      # `jax.lax.axis_index` raises `NameError` outside of a parallel context
+      # (e.g. un-sharded CPU unit tests). `is_bottom_shard = True` is required
+      # in un-sharded execution because a single device holds the entire domain
+      # including the ground boundary.
+      try:
+        is_bottom_shard = jax.lax.axis_index(g_axis) == 0
+      except NameError:
+        is_bottom_shard = True
+      updated_flux = jax.lax.dynamic_update_slice(
           fluxes_face[g_dim], plane, tuple(start_idx)
+      )
+      fluxes_face[g_dim] = jnp.where(
+          is_bottom_shard, updated_flux, fluxes_face[g_dim]
       )
 
     # Apply prescribed diffusive fluxes from proto config.
@@ -251,8 +262,17 @@ def diffusion_scalar_factory(
 
         start = [0, 0, 0]
         start[axis_index_dim] = plane_idx
-        fluxes_face[dim] = jax.lax.dynamic_update_slice(
+        try:
+          core_idx = jax.lax.axis_index(axis)
+          num_cores = jax.lax.axis_size(axis)
+          is_target_shard = core_idx == (0 if face == 0 else num_cores - 1)
+        except NameError:
+          is_target_shard = True
+        updated_prescribed = jax.lax.dynamic_update_slice(
             fluxes_face[dim], flux_plane, tuple(start)
+        )
+        fluxes_face[dim] = jnp.where(
+            is_target_shard, updated_prescribed, fluxes_face[dim]
         )
 
     # Compute diffusion terms on nodes.
