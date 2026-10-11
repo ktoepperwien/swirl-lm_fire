@@ -1,0 +1,112 @@
+// Copyright 2026 The swirl_lm Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package research.simulation;
+
+// Wind through a wildland-urban interface: buildings as boxes, terrain as a
+// height field, vegetation as a drag field.
+//
+// Like `CylinderCase` this describes the *case* and not the solver; `wui.Wui`
+// expands it into a full `SwirlLMParameters`. The split between this file and
+// the scene file is deliberate and total: **the scene file owns all geometry**
+// -- the mesh size, the spacing, the terrain, the boxes and the fuel, all
+// written in the solver's own frame by `extract_scene.py` -- and this file
+// owns only the physics and the run. Nothing is stated twice, so the grid
+// cannot disagree with the geometry defined on it.
+message WuiCase {
+  // The `.npz` written by `extract_scene.py`. Required.
+  optional string scene_path = 1;
+
+  // -- Inflow ---------------------------------------------------------------
+
+  // Wind speed at `reference_height` above the local ground, in m/s.
+  optional float inflow_speed = 2 [default = 5.0];
+  optional float reference_height = 3 [default = 10.0];
+  // Aerodynamic roughness length of the log-law inlet profile, in metres.
+  // 0.5 m is the usual value for a suburb with mature trees; the profile is
+  // `u_ref * ln((h + z0)/z0) / ln((z_ref + z0)/z0)` in height above the
+  // *local* terrain, so the inlet is consistent with the ground the immersed
+  // boundary imposes rather than with a flat floor.
+  optional float roughness_length = 4 [default = 0.5];
+  // Air viscosity. The building Reynolds number is of order 1e6 either way,
+  // far beyond what this grid resolves, so this is not the quantity that
+  // decides the answer -- the resolved separation off the box edges is.
+  optional float kinematic_viscosity = 5 [default = 1.5e-5];
+  optional float density = 6 [default = 1.0];
+
+  // -- Vegetation -----------------------------------------------------------
+
+  // Canopy drag, `-3/8 * c_d * rho * a_v * |u| * u`, after the form used by
+  // the fire example. Unlike that one, `a_v` is not uniform: it is
+  // `a_v_per_density * rho_f`, so a sparse canopy drags less than a dense
+  // one instead of every fuel-bearing cell dragging alike. With the defaults
+  // the densest cell in the Mandeville scene (1.9 kg/m^3) reaches
+  // `c_d * a_v = 0.29 1/m`, in the usual range for a forest canopy.
+  optional float c_d = 7 [default = 0.15];
+  // Frontal area per unit volume per unit bulk density, in m^2/m^3 per
+  // kg/m^3. Set to zero to turn the vegetation off and leave only the
+  // buildings and the terrain.
+  optional float a_v_per_density = 8 [default = 1.0];
+
+  // -- Numerics -------------------------------------------------------------
+
+  // Convective CFL used to pick the time step, based on the inflow speed.
+  // The flow speeds up over the ridge and between the houses, so the number
+  // the solver reports comes out higher than this.
+  optional float cfl = 9 [default = 0.3];
+  optional float dt = 10;
+  // Four, not the two the other examples use: the image point of a ghost
+  // cell on this geometry sits up to 2.6 cells away horizontally, so a halo
+  // of two would have the interpolation stencil read across a device seam
+  // into cells the exchange does not fill. `Wui` measures the reach once the
+  // geometry is built and raises if it exceeds the halo on a split axis.
+  optional int32 halo_width = 11 [default = 4];
+  // Width of the convolution kernel for the finite-difference stencils. It
+  // must divide every per-core extent, halos included: a non-dividing extent
+  // silently drops into a slice fallback that disagrees with the convolution
+  // path for some kernels. See MEMORY.md, kernel-operator defects. `Wui`
+  // checks it and raises.
+  optional int32 kernel_size = 12 [default = 4];
+  // Jacobi iterations in the pressure solve. The cylinder case needed 320
+  // before its wake stopped moving with the iteration count, and the other
+  // three solvers diverge (MEMORY.md), so this is the knob that decides
+  // whether the velocity field means anything.
+  optional int32 pressure_iterations = 13 [default = 320];
+  optional int32 num_sub_iterations = 14 [default = 3];
+  // Repetitions of the ghost-value update per application. More than one
+  // matters where one ghost cell's interpolation stencil contains another,
+  // which here is common: 70 boxes sitting on terrain make plenty of
+  // concave corners.
+  optional int32 num_sweeps = 15 [default = 2];
+
+  // -- Decomposition --------------------------------------------------------
+
+  // `cores_z` must stay 1. A height field reports the vertical gap rather
+  // than the true distance, so on this terrain -- median slope 19 degrees,
+  // 90th percentile 35 -- the image point of a ghost cell can sit 7 cells
+  // away vertically, beyond any sane halo. The x and y reach is under 2
+  // cells, so those are the axes to split. `Wui` raises if `cores_z > 1`.
+  optional int32 cores_x = 16 [default = 1];
+  optional int32 cores_y = 17 [default = 1];
+  optional int32 cores_z = 18 [default = 1];
+
+  // Smagorinsky subgrid viscosity. Off by default: at 2 m the building wakes
+  // are only just resolved and the QUICK scheme already dissipates, and the
+  // subgrid path has never run on this case. Turn it on for a more
+  // believable canopy interior, knowing it adds `nu_t` and `tke` to the
+  // state.
+  optional bool use_sgs = 19 [default = false];
+}

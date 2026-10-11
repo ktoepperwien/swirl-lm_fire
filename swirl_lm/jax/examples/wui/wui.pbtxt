@@ -1,0 +1,79 @@
+# proto-file: swirl_lm/jax/examples/wui/wui.proto
+# proto-message: WuiCase
+#
+# Wind through the Mandeville neighbourhood: 24 houses as 70 oriented boxes,
+# terrain as a height field, vegetation as a drag field.
+#
+# The mesh is NOT set here. It comes from the scene file, which
+# `extract_scene.py` writes in the solver's own frame -- 160 x 104 x 192
+# points at 2 x 2 x 1 m, a 318 x 206 x 191 m domain. Change the mesh by
+# re-running the extraction, not by editing this file.
+#
+#   python -m swirl_lm.jax.examples.wui.extract_scene \
+#       --voxels=.../combustion_grid_0p25m.npz \
+#       --grid=.../mandeville_grid_data.zarr \
+#       --output=.../wui_scene.npz --overlay=.../fit_check.png
+#
+# Look at the overlay. The box fitting is the step where a quiet error costs
+# a whole run.
+
+scene_path: "/path/to/wui_scene.npz"
+
+# A moderate breeze from the west, as a log law in height above the *local*
+# terrain. z0 = 0.5 m is the usual value for a suburb with mature trees.
+inflow_speed: 5.0
+reference_height: 10.0
+roughness_length: 0.5
+
+# Canopy drag, `-3/8 * c_d * rho * a_v * |u| * u`, with
+# `a_v = a_v_per_density * rho_f` so a sparse canopy drags less than a dense
+# one. At the densest cell in this scene (1.9 kg/m^3) that is
+# `c_d * a_v = 0.29 1/m`, in the usual range for a forest canopy. Set
+# `a_v_per_density: 0.0` to see the buildings and terrain alone.
+c_d: 0.15
+a_v_per_density: 1.0
+
+# Based on the inflow speed and the smallest spacing, which is the vertical
+# metre. The flow speeds up over the ridge and between the houses, so the
+# CFL the solver reports comes out above this.
+cfl: 0.3
+
+# Four, not the two the cylinder uses. The image point of a ghost cell on
+# this geometry sits up to 2.6 cells away horizontally, so a halo of two
+# would have the interpolation stencil read across a device seam into cells
+# the exchange does not fill. `Wui` measures the reach after building the
+# geometry and raises if it exceeds the halo on a split axis.
+halo_width: 4
+
+# Must divide every per-core extent, halos included, as must the 4 that
+# convection.py hard-codes. `extract_scene.py` rounds each axis to a
+# multiple of 8 so the usual decompositions stay legal; `Wui` checks the one
+# actually requested and raises. See MEMORY.md.
+kernel_size: 4
+
+# The pressure solve does not converge (MEMORY.md section 5) and only Jacobi
+# runs at all. On the cylinder the answer kept moving until about 320
+# iterations. This is the first knob to question if the flow looks wrong,
+# and the reason no number from this case should be quoted.
+pressure_iterations: 320
+num_sub_iterations: 3
+num_sweeps: 2
+
+# The decomposition, and the only thing that decides how many devices are
+# used. run_wui.sh reads these and overrides them from CORES_X/CORES_Y.
+#
+# Which splits are legal: every per-core extent, halos included, must divide
+# by 4, which with 160 x 104 x 192 interior points allows cores_x in
+# {1,2,4,5,8,10} and cores_y in {1,2}.
+#
+# `cores_z` must stay 1. The terrain height field reports the vertical gap
+# rather than the true distance, so a ghost cell's image point reaches about
+# 5 cells along z -- past any sane halo. Horizontally it reaches under 3, so
+# x and y are the axes to split. `Wui` raises on cores_z > 1.
+cores_x: 1
+cores_y: 1
+cores_z: 1
+
+# Off: at 2 m the building wakes are only just resolved, QUICK already
+# dissipates, and the subgrid path has never run on this case.
+use_sgs: false
