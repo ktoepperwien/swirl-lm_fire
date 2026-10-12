@@ -45,6 +45,20 @@ def main(_):
   u, v, w = (np.asarray(store[k][:]) for k in ('u', 'v', 'w'))
   fluid = np.asarray(store['ib_interior_mask'][:]) > 0.5
 
+  # The interior CFL. The driver logs this over the whole array including
+  # halos, where an immersed boundary routinely parks large values, so the
+  # logged number runs well above the real one -- 1.56 against 0.49 on one
+  # measured step. This is the number that decides stability.
+  gs = sim.params.grid_spacings
+  cfl_field = sim.dt * (np.abs(u) / gs[0] + np.abs(v) / gs[1]
+                        + np.abs(w) / gs[2])
+  finite_cfl = cfl_field[np.isfinite(cfl_field) & fluid]
+  if finite_cfl.size:
+    print('interior CFL: max %.3f, p99.99 %.3f  (dt = %.5g s); %d fluid '
+          'cells above 1'
+          % (finite_cfl.max(), np.percentile(finite_cfl, 99.99), sim.dt,
+             int((finite_cfl > 1.0).sum())))
+
   speed = np.sqrt(u ** 2 + v ** 2 + w ** 2)
   bad = ~np.isfinite(speed)
   print('non-finite cells: %d of %d (%.4f%%); in the fluid: %d'
