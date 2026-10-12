@@ -79,7 +79,15 @@ message WuiCase {
   // slip walls stay, but the padded margin -- where the terrain is
   // extruded outward and so forms a ramp pressed against the wall -- is
   // damped instead of being left to generate its own flow.
-  optional float sponge_fraction = 20 [default = 0.1];
+  // Measured on the Mandeville terrain: the ground climbs 17 m over the last
+  // 50 m at 19 degrees and then runs flat for the final 16 m into the
+  // outlet, the flow separates over that crest, and the recirculation
+  // reaches the outflow plane. At step 800 of the undamped run every one of
+  // the twelve fastest cells sat between x = 310 m and the 350 m outlet,
+  // 43 to 57 m above the ground, at up to 85 m/s against a mean of 9. A
+  // tenth of the domain starts at x = 315 m and misses the upstream end of
+  // that structure; 0.15 starts at 298 m and covers it.
+  optional float sponge_fraction = 20 [default = 0.15];
   // Strength of the damping: the maximum relaxation rate is `1/sponge_coeff`
   // per second, so larger is gentler.
   //
@@ -91,8 +99,10 @@ message WuiCase {
   // `dt` around 0.03 s anything above `sponge_coeff = 0.15` is safe, so this
   // is nowhere near the limit.
   optional float sponge_coeff = 21 [default = 5.0];
-  // Whether to damp the two lateral faces as well as the outlet.
-  optional bool lateral_sponge = 22 [default = true];
+  // The same, for the two lateral faces, where the job is different and
+  // smaller: it only has to cover the padded margin, which is 16 m of 238 m
+  // here, plus a little transition. Set to zero to damp the outlet alone.
+  optional float lateral_sponge_fraction = 22 [default = 0.08];
 
   // -- Numerics -------------------------------------------------------------
 

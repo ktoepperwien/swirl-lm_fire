@@ -402,7 +402,7 @@ class SpongeTest(parameterized.TestCase):
   def test_the_outlet_is_damped_and_the_sides_optionally(self):
     path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
     for lateral, expected in ((False, 1), (True, 3)):
-      sim = wui.Wui(_case(path, lateral_sponge=lateral))
+      sim = wui.Wui(_case(path, lateral_sponge_fraction=(0.08 if lateral else 0.0)))
       layers = list(sim.params.sponge)
       self.assertLen(layers, 1)
       self.assertLen(layers[0].orientation, expected)
@@ -418,7 +418,7 @@ class SpongeTest(parameterized.TestCase):
   def test_the_profile_is_zero_inside_and_rises_towards_the_outlet(self):
     path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
     sim = wui.Wui(_case(path, sponge_fraction=0.2, sponge_coeff=5.0,
-                        lateral_sponge=False))
+                        lateral_sponge_fraction=0.0))
     states = sim.initialization(sim.params, (0, 0, 0))
     beta = np.asarray(states['sponge_beta'])
     halo = sim.gp.halo_width
@@ -437,7 +437,7 @@ class SpongeTest(parameterized.TestCase):
 
   def test_the_force_opposes_a_departure_from_the_target(self):
     path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
-    sim = wui.Wui(_case(path, sponge_fraction=0.2, lateral_sponge=False))
+    sim = wui.Wui(_case(path, sponge_fraction=0.2, lateral_sponge_fraction=0.0))
     library = sim.source_term_update_fn()
     states = sim.initialization(sim.params, (0, 0, 0))
     perturbed = dict(states)

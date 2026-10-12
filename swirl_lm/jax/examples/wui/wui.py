@@ -514,14 +514,14 @@ class Wui:
     case = self.case
     if case.sponge_fraction <= 0.0:
       return ''
-    faces = [(0, 1)]                       # the outlet
-    if case.lateral_sponge:
-      faces += [(1, 0), (1, 1)]            # both sides
+    faces = [(0, 1, case.sponge_fraction)]        # the outlet
+    if case.lateral_sponge_fraction > 0.0:
+      faces += [(1, 0, case.lateral_sponge_fraction),
+                (1, 1, case.lateral_sponge_fraction)]
     orientations = '\n'.join(
         f'    orientation {{ dim: {dim} face: {face} '
-        f'fraction: {case.sponge_fraction:g} '
-        f'a_coeff: {case.sponge_coeff:g} }}'
-        for dim, face in faces
+        f'fraction: {fraction:g} a_coeff: {case.sponge_coeff:g} }}'
+        for dim, face, fraction in faces
     )
     variables = '\n'.join(
         f'    variable_info {{ name: "{name}" '
@@ -1012,9 +1012,13 @@ boundary_models {{
         + (
             ''
             if self.sponge is None
-            else f'; sponge over the outer {case.sponge_fraction:.0%} of the '
-            f'outlet'
-            + (' and both sides' if case.lateral_sponge else '')
+            else f'; sponge over the outer {case.sponge_fraction:.0%} of '
+            f'the outlet'
+            + (
+                ''
+                if case.lateral_sponge_fraction <= 0.0
+                else f' and {case.lateral_sponge_fraction:.0%} of each side'
+            )
             + f', relaxing in {case.sponge_coeff:g} s'
         )
     )
