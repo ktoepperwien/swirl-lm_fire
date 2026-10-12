@@ -70,6 +70,7 @@ from google.protobuf import text_format
 from swirl_lm.base import parameters_pb2
 from swirl_lm.jax.base import parameters as parameters_lib
 from swirl_lm.jax.boundary_condition import immersed_boundary_ghost_point
+from swirl_lm.jax.boundary_condition import rayleigh_damping_layer
 from swirl_lm.jax.examples.wui import wui_pb2
 from swirl_lm.jax.utility import types
 
@@ -173,6 +174,12 @@ class Wui:
     # Has to follow the grid, which decides where the cell centres are, and
     # precede the geometry, which is built on the shifted ground.
     self.terrain_shift = self._terrain_offset()
+
+    self.sponge = (
+        rayleigh_damping_layer.RayleighDampingLayer(self.params.sponge)
+        if self.params.sponge
+        else None
+    )
 
     # The geometry comes from the generated configuration, so the solver and
     # anything derived here describe the same scene.
@@ -489,6 +496,43 @@ class Wui:
     blocks.append('      geometry { height_field { profile: "terrain" } }')
     return '\n'.join(blocks)
 
+  def _sponge_config(self) -> str:
+    """The Rayleigh damping block, indented to sit inside `boundary_models`.
+
+    One sponge at the outlet, and optionally one on each lateral face. Each
+    relaxes the velocity towards its initial value -- the undisturbed inlet
+    profile -- over the outer `sponge_fraction` of that axis.
+
+    The outlet one is what stops a recirculation bubble reaching the
+    outflow plane, where a zero-gradient condition cannot represent it. The
+    lateral ones stand in for periodicity, which this terrain rules out:
+    the south and north edges differ by 16 m on average and 47 m at worst.
+
+    Returns:
+      The `sponge` block, or an empty string when damping is switched off.
+    """
+    case = self.case
+    if case.sponge_fraction <= 0.0:
+      return ''
+    faces = [(0, 1)]                       # the outlet
+    if case.lateral_sponge:
+      faces += [(1, 0), (1, 1)]            # both sides
+    orientations = '\n'.join(
+        f'    orientation {{ dim: {dim} face: {face} '
+        f'fraction: {case.sponge_fraction:g} '
+        f'a_coeff: {case.sponge_coeff:g} }}'
+        for dim, face in faces
+    )
+    variables = '\n'.join(
+        f'    variable_info {{ name: "{name}" '
+        f'target_state_name: "{name}_init" primitive: true }}'
+        for name in VELOCITY
+    )
+    return f"""  sponge {{
+{orientations}
+{variables}
+  }}"""
+
   def config_text(self) -> str:
     """The solver configuration this case expands into, as a text proto.
 
@@ -568,6 +612,11 @@ class Wui:
         'src_u', 'src_v', 'src_w',
         'bc_u_0_0', 'bc_v_0_0', 'bc_w_0_0',
     ]
+    if case.sponge_fraction > 0.0:
+      # `sponge_beta` is the damping profile; the `*_init` fields are what
+      # the sponge relaxes towards, which here is the undisturbed inlet.
+      keys.append('sponge_beta')
+      keys.extend(f'{name}_init' for name in VELOCITY)
     if case.use_sgs:
       # `velocity.prediction_step` adds the eddy viscosity to `nu` whether or
       # not anyone is tracking it, and only writes the field out when the
@@ -647,6 +696,7 @@ boundary_models {{
       write_signed_distance: false
     }}
   }}
+{self._sponge_config()}
 }}
 {velocity_bc('u')}
 {velocity_bc('v')}
@@ -811,6 +861,16 @@ boundary_models {{
     if self.case.use_sgs:
       states['nu_t'] = jnp.zeros_like(speed)
 
+    if self.sponge is not None:
+      # The damping profile, zero outside the layer and rising as sin^2 to
+      # `a_coeff` at the face (Klemp and Lilly, 1978), and the targets the
+      # sponge relaxes towards -- the undisturbed inlet, frozen at step 0.
+      beta = rayleigh_damping_layer.klemp_lilly_relaxation_coeff_fn(
+          list(next(iter(self.params.sponge)).orientation),
+          x0=0.0, y0=0.0, z0=0.0,
+      )
+      states['sponge_beta'] = beta(xx, yy, zz, self.lx, self.ly, self.lz)
+
     geometry = self.ghost_points(_mesh_for(params))
     states.update(geometry.initial_states(logical_coordinates))
 
@@ -820,6 +880,14 @@ boundary_models {{
     if immersed_boundary_ghost_point.INTERIOR_MASK_KEY in states:
       fluid = states[immersed_boundary_ghost_point.INTERIOR_MASK_KEY]
       states['u'] = states['u'] * fluid
+
+    if self.sponge is not None:
+      # After the mask, not before: the sponge should pull the flow back to
+      # the state the run actually started from. Captured earlier it would
+      # carry a wind blowing inside the solid, which the immersed boundary
+      # then spends every step undoing.
+      for name in VELOCITY:
+        states[f'{name}_init'] = states[name]
 
     # The inlet profile, as the first `halo + 1` planes of the initial field.
     # Supplying these overrides the scalar Dirichlet value in the
@@ -895,9 +963,31 @@ boundary_models {{
       )
       return jnp.where(rho_f < _EPSILON, jnp.zeros_like(force), force)
 
+    def sponge_force(states, additional_states):
+      """The Rayleigh damping, as a dict of `src_*` contributions."""
+      helper = {'sponge_beta': additional_states['sponge_beta']}
+      helper.update({f'src_{name}': jnp.zeros_like(states[name])
+                     for name in VELOCITY})
+      helper.update({f'{name}_init': additional_states[f'{name}_init']
+                     for name in VELOCITY
+                     if f'{name}_init' in additional_states})
+      inputs = {name: states[name] for name in VELOCITY}
+      inputs['rho'] = states['rho']
+      return self.sponge.additional_states_update_fn(
+          states=inputs, additional_states=helper, dt=self.dt
+      )
+
     def source(name):
       def fn(states, additional_states):
-        return {f'src_{name}': drag(states, additional_states, name)}
+        total = drag(states, additional_states, name)
+        if self.sponge is not None:
+          # The layer returns a primitive-variable force, so it is weighted
+          # by density to match the conservative source the solver wants --
+          # the same conversion the fire example makes.
+          total = total + states['rho'] * sponge_force(
+              states, additional_states
+          )[f'src_{name}']
+        return {f'src_{name}': total}
 
       return fn
 
@@ -919,6 +1009,14 @@ boundary_models {{
         f'canopy c_d*a_v up to '
         f'{drag:.3g} 1/m; dt = {self.dt:.4g} s on '
         f'{case.cores_x}x{case.cores_y}x{case.cores_z} cores'
+        + (
+            ''
+            if self.sponge is None
+            else f'; sponge over the outer {case.sponge_fraction:.0%} of the '
+            f'outlet'
+            + (' and both sides' if case.lateral_sponge else '')
+            + f', relaxing in {case.sponge_coeff:g} s'
+        )
     )
 
 

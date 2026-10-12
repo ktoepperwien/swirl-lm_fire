@@ -362,7 +362,8 @@ class VegetationTest(parameterized.TestCase):
 
   def test_drag_opposes_the_flow_and_scales_with_the_fuel(self):
     path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
-    sim = wui.Wui(_case(path, c_d=0.2, a_v_per_density=1.0))
+    sim = wui.Wui(_case(path, c_d=0.2, a_v_per_density=1.0,
+                        sponge_fraction=0.0))
     library = sim.source_term_update_fn()
 
     states = {
@@ -383,7 +384,7 @@ class VegetationTest(parameterized.TestCase):
 
   def test_no_drag_where_there_is_no_fuel(self):
     path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
-    sim = wui.Wui(_case(path))
+    sim = wui.Wui(_case(path, sponge_fraction=0.0))
     library = sim.source_term_update_fn()
     states = {
         'rho': jnp.ones((1, 1, 1)),
@@ -393,6 +394,61 @@ class VegetationTest(parameterized.TestCase):
     }
     src = library['u'](states, {'rho_f': jnp.zeros((1, 1, 1))})['src_u']
     self.assertEqual(float(src[0, 0, 0]), 0.0)
+
+
+class SpongeTest(parameterized.TestCase):
+  """Rayleigh damping at the outlet, and on the sides in place of periodicity."""
+
+  def test_the_outlet_is_damped_and_the_sides_optionally(self):
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    for lateral, expected in ((False, 1), (True, 3)):
+      sim = wui.Wui(_case(path, lateral_sponge=lateral))
+      layers = list(sim.params.sponge)
+      self.assertLen(layers, 1)
+      self.assertLen(layers[0].orientation, expected)
+      # The outlet is always one of them: high face of x.
+      self.assertIn((0, 1), [(o.dim, o.face) for o in layers[0].orientation])
+
+  def test_zero_fraction_switches_it_off_entirely(self):
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path, sponge_fraction=0.0))
+    self.assertIsNone(sim.sponge)
+    self.assertNotIn('sponge_beta', sim.initialization(sim.params, (0, 0, 0)))
+
+  def test_the_profile_is_zero_inside_and_rises_towards_the_outlet(self):
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path, sponge_fraction=0.2, sponge_coeff=5.0,
+                        lateral_sponge=False))
+    states = sim.initialization(sim.params, (0, 0, 0))
+    beta = np.asarray(states['sponge_beta'])
+    halo = sim.gp.halo_width
+    self.assertAlmostEqual(float(beta.max()), 1.0 / 5.0, places=4)
+    # Undamped well upstream, damped at the outlet.
+    self.assertAlmostEqual(float(beta[halo + 1, :, :].max()), 0.0, places=6)
+    self.assertGreater(float(beta[-halo - 1, :, :].max()), 0.0)
+
+  def test_the_targets_are_the_undisturbed_inlet(self):
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path))
+    states = sim.initialization(sim.params, (0, 0, 0))
+    for name in ('u', 'v', 'w'):
+      np.testing.assert_allclose(
+          np.asarray(states[f'{name}_init']), np.asarray(states[name]))
+
+  def test_the_force_opposes_a_departure_from_the_target(self):
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path, sponge_fraction=0.2, lateral_sponge=False))
+    library = sim.source_term_update_fn()
+    states = sim.initialization(sim.params, (0, 0, 0))
+    perturbed = dict(states)
+    # Push the whole field above its target; the damping must pull back.
+    perturbed['u'] = states['u'] + 5.0
+    src = np.asarray(library['u'](perturbed, states)['src_u'])
+    beta = np.asarray(states['sponge_beta'])
+    self.assertLess(src[beta > 0].min(), 0.0)
+    # And leave the interior alone, where there is no fuel either.
+    quiet = (beta == 0) & (np.asarray(states['rho_f']) == 0)
+    np.testing.assert_allclose(src[quiet], 0.0, atol=1e-6)
 
 
 class ConfigurationTest(parameterized.TestCase):

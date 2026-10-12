@@ -61,6 +61,39 @@ message WuiCase {
   // buildings and the terrain.
   optional float a_v_per_density = 8 [default = 1.0];
 
+  // -- Sponge layers ---------------------------------------------------------
+
+  // Rayleigh damping that relaxes the flow back towards its inlet profile
+  // near a boundary, as a fraction of the domain length on that axis.
+  //
+  // At the **outlet** this is the cheap alternative to a longer domain. Flow
+  // up a ramp that flattens near the exit separates, and the recirculation
+  // reaches the outflow plane, where a zero-gradient condition cannot
+  // represent it; the solver then tends to fail. Relaxing the last tenth of
+  // the domain towards the undisturbed profile keeps the outflow plane
+  // clean without paying for more cells.
+  //
+  // On the **lateral** faces it substitutes for periodicity, which this
+  // terrain cannot support: the south and north edges differ by 16 m on
+  // average and 47 m at worst, so a periodic seam would be a cliff. The
+  // slip walls stay, but the padded margin -- where the terrain is
+  // extruded outward and so forms a ramp pressed against the wall -- is
+  // damped instead of being left to generate its own flow.
+  optional float sponge_fraction = 20 [default = 0.1];
+  // Strength of the damping: the maximum relaxation rate is `1/sponge_coeff`
+  // per second, so larger is gentler.
+  //
+  // Five, not the 20 the proto and the fire case default to. What matters is
+  // how much relaxation the flow gets while crossing the layer, and at 20 a
+  // 35 m outlet layer at 5 m/s delivers 0.35 e-foldings -- too little to
+  // flatten a recirculation bubble before it reaches the outflow plane. Five
+  // gives 1.4. Explicit stability needs `beta * dt` well under one, and with
+  // `dt` around 0.03 s anything above `sponge_coeff = 0.15` is safe, so this
+  // is nowhere near the limit.
+  optional float sponge_coeff = 21 [default = 5.0];
+  // Whether to damp the two lateral faces as well as the outlet.
+  optional bool lateral_sponge = 22 [default = true];
+
   // -- Numerics -------------------------------------------------------------
 
   // Convective CFL used to pick the time step, based on the inflow speed.
