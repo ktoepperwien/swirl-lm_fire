@@ -45,6 +45,7 @@ from scipy import ndimage
 from swirl_lm.jax.boundary_condition import immersed_boundary_ghost_point as gp
 from swirl_lm.jax.boundary_condition import immersed_boundary_method
 from swirl_lm.jax.core import driver as driver_lib
+from swirl_lm.jax.examples.wui import extract_scene
 from swirl_lm.jax.examples.wui import wui
 from swirl_lm.jax.examples.wui import wui_pb2
 from swirl_lm.jax.utility import signed_distance as sdf
@@ -517,6 +518,74 @@ class InteriorClampTest(parameterized.TestCase):
     ghost = np.asarray(states[gp.GHOST_MASK_KEY]) > 0.5
     deep = solid & ~ghost
     np.testing.assert_allclose(updated[deep], 1.0, atol=1e-6)
+
+
+class SyntheticBuildingTest(parameterized.TestCase):
+  """The single-building mode, which exists to isolate one clean box.
+
+  The fitted geometry confounds the building with two other things: boxes
+  too thin for the grid, and gaps between neighbours that are equally
+  unresolved. One well-resolved block on flat ground has neither.
+  """
+
+  def _terrain(self, nx=60, ny=60, height=10.0):
+    """Flat ground with a steep ramp along one edge, so the search has to
+    actually prefer the flat part rather than landing anywhere."""
+    terrain = np.full((nx, ny), height, np.float32)
+    terrain[:, :8] += np.linspace(40.0, 0.0, 8)[None, :]
+    return terrain
+
+  @parameterized.parameters(3, 6, 8, 10)
+  def test_the_box_is_the_requested_size_in_cells(self, cells):
+    terrain = self._terrain()
+    boxes = extract_scene.single_building(
+        terrain, dx=2.0, dz=1.0, cells=cells, yaw_deg=45.0,
+        position=(60.0, 60.0))
+    half = boxes['box_half_extents'][0]
+    self.assertLen(boxes['box_centres'], 1)
+    self.assertAlmostEqual(2 * half[0] / 2.0, cells, places=5)
+    self.assertAlmostEqual(2 * half[1] / 2.0, cells, places=5)
+    # Vertical: the requested height plus the burial depth.
+    visible = boxes['box_centres'][0, 2] + half[2] - 10.0
+    self.assertAlmostEqual(visible, cells * 1.0, places=5)
+
+  def test_the_box_sits_on_the_ground_rather_than_floating(self):
+    terrain = self._terrain(height=10.0)
+    boxes = extract_scene.single_building(
+        terrain, 2.0, 1.0, 8, 45.0, position=(60.0, 60.0))
+    centre, half = boxes['box_centres'][0], boxes['box_half_extents'][0]
+    base = centre[2] - half[2]
+    # Buried, so no gap can open between the block and the terrain.
+    self.assertLess(base, 10.0)
+    self.assertAlmostEqual(base, 10.0 - extract_scene._BURY_DEPTH_M, places=5)  # pylint: disable=protected-access
+
+  def test_the_yaw_is_about_z_only(self):
+    boxes = extract_scene.single_building(
+        self._terrain(), 2.0, 1.0, 8, 45.0, position=(60.0, 60.0))
+    np.testing.assert_allclose(
+        boxes['box_rotations_deg'][0], [0.0, 0.0, 45.0], atol=1e-6)
+
+  def test_a_box_with_no_interior_is_refused(self):
+    """Under three cells every solid cell is on the surface, which is the
+    defect the fitted geometry has."""
+    with self.assertRaisesRegex(ValueError, 'under 3 cells'):
+      extract_scene.single_building(
+          self._terrain(), 2.0, 1.0, 2, 45.0, position=(60.0, 60.0))
+
+  def test_the_placement_search_prefers_flat_ground(self):
+    terrain = self._terrain()
+    x, y = extract_scene.flattest_patch(terrain, dx=2.0, window_m=24.0)
+    # The ramp occupies the first 8 columns, y < 16 m.
+    self.assertGreater(y, 16.0)
+
+  def test_no_buildings_is_an_empty_but_well_shaped_set(self):
+    boxes = extract_scene._no_buildings()  # pylint: disable=protected-access
+    for key in ('box_centres', 'box_half_extents', 'box_rotations_deg'):
+      self.assertEqual(boxes[key].shape, (0, 3))
+
+  def test_resolvability_report_runs_on_an_empty_scene(self):
+    extract_scene.report_resolvability(
+        extract_scene._no_buildings(), 2.0, 1.0)  # pylint: disable=protected-access
 
 
 if __name__ == '__main__':

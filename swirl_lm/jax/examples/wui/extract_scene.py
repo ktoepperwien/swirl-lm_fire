@@ -107,6 +107,35 @@ _MIN_AREA = flags.DEFINE_float(
     'min_footprint_area', 40.0,
     'Footprints smaller than this, in square metres, are discarded as debris.',
 )
+_BUILDINGS = flags.DEFINE_enum(
+    'buildings', 'fitted', ['fitted', 'single', 'none'],
+    'Which buildings to put in the scene. `fitted` boxes the real roofs. '
+    '`single` discards them and places one well-resolved block on the '
+    'flattest ground near the centre, which isolates the building from the '
+    'two things the fitted geometry confounds it with -- boxes too thin for '
+    'the grid, and gaps between neighbours that are equally unresolved. '
+    '`none` is the terrain-only control.',
+)
+_SINGLE_CELLS = flags.DEFINE_integer(
+    'single_building_cells', 8,
+    'Size of the `single` building, in cells on every axis: 16 x 16 m by 8 m '
+    'at the default spacing. Below 3 a box has no interior at all. Six is '
+    'viable but, rotated to the wind, comes out 81% surface; eight leaves a '
+    'two-to-one ghost-to-interior ratio.',
+)
+_SINGLE_YAW = flags.DEFINE_float(
+    'single_building_yaw', 45.0,
+    'Rotation of the `single` building about z, in degrees from the wind, '
+    'which blows along +x. 45 is the worst case for a Cartesian grid and so '
+    'the honest one to test.',
+)
+_SINGLE_X = flags.DEFINE_float(
+    'single_building_x', None,
+    'Where to put the `single` building, in metres from the domain corner. '
+    'Defaults to the flattest window near the centre.',
+)
+_SINGLE_Y = flags.DEFINE_float('single_building_y', None, 'See '
+                               '--single_building_x.')
 
 # Footprints come from **roofs alone**. Measured on the Mandeville scene,
 # including `wall` and `other_builtup` is actively wrong: driveways, patios
@@ -468,7 +497,7 @@ def extract_buildings(
   )
 
   hag = voxels.hag_m[keep]
-  centres, half_extents, rotations = [], [], []
+  centres, half_extents, rotations, owners = [], [], [], []
   report: list[dict[str, Any]] = []
 
   for label in range(1, count + 1):
@@ -509,6 +538,7 @@ def extract_buildings(
                            max(half[1], 0.5 * min_width),
                            0.5 * (top - base)])
       rotations.append([0.0, 0.0, yaw])
+      owners.append(int(label))
 
     report.append({
         'label': int(label),
@@ -525,6 +555,10 @@ def extract_buildings(
       'box_centres': np.asarray(centres, np.float32),
       'box_half_extents': np.asarray(half_extents, np.float32),
       'box_rotations_deg': np.asarray(rotations, np.float32),
+      # Which building each box came from. Parts of one building abut by
+      # construction, so a gap report that did not know this would measure
+      # the splitter rather than the spacing of the houses.
+      'box_building_id': np.asarray(owners, np.int32),
   }
   logging.info(
       '%d buildings -> %d boxes', len(report), len(centres)
@@ -637,6 +671,262 @@ def resample_fuel(
   safe = np.clip(level, 0, column.shape[2] - 1)
   fuel = np.take_along_axis(column, safe, axis=2)
   return np.where(valid, fuel, 0.0).astype(np.float32)
+
+
+def flattest_patch(
+    terrain: np.ndarray, dx: float, window_m: float, search_m: float = 50.0
+) -> tuple[float, float]:
+  """Where to stand a test building so the terrain is not a confounder.
+
+  Searches for the window of the given size, within `search_m` of the domain
+  centre, whose mean slope and local relief are smallest. On the Mandeville
+  terrain this finds a shelf at (186, 140) with 0.4 degrees of mean slope and
+  no relief at all, against 3.9 degrees at the exact centre.
+
+  Args:
+    terrain: `(nx, ny)` terrain height above the domain floor.
+    dx: Horizontal spacing.
+    window_m: Side of the window to flatten over -- use the building size.
+    search_m: How far from the centre to look.
+
+  Returns:
+    `(x, y)` in metres from the domain corner.
+  """
+  gx, gy = np.gradient(terrain, dx, dx)
+  slope = np.degrees(np.arctan(np.hypot(gx, gy)))
+  window = max(int(round(window_m / dx)), 1)
+  mean_slope = ndimage.uniform_filter(slope, window)
+  relief = (ndimage.maximum_filter(terrain, window)
+            - ndimage.minimum_filter(terrain, window))
+
+  nx, ny = terrain.shape
+  cx, cy = nx // 2, ny // 2
+  reach = max(int(round(search_m / dx)), 1)
+  lo_x, hi_x = max(cx - reach, 0), min(cx + reach, nx)
+  lo_y, hi_y = max(cy - reach, 0), min(cy + reach, ny)
+  patch = (slice(lo_x, hi_x), slice(lo_y, hi_y))
+  # Both terms are in the units they are: degrees and metres. They are not
+  # commensurate, but both are near zero on good ground and the minimum is
+  # insensitive to the weighting.
+  i, j = np.unravel_index(
+      np.argmin(mean_slope[patch] + relief[patch]),
+      (hi_x - lo_x, hi_y - lo_y),
+  )
+  x, y = (lo_x + i) * dx, (lo_y + j) * dx
+  logging.info(
+      'single building at (%.0f, %.0f) m: mean slope %.1f deg, relief %.1f m '
+      'over a %.0f m window (the domain centre has %.1f deg)',
+      x, y, mean_slope[lo_x + i, lo_y + j], relief[lo_x + i, lo_y + j],
+      window_m, mean_slope[cx, cy],
+  )
+  return float(x), float(y)
+
+
+def single_building(
+    terrain: np.ndarray,
+    dx: float,
+    dz: float,
+    cells: int,
+    yaw_deg: float,
+    position: tuple[float, float] | None,
+) -> dict[str, np.ndarray]:
+  """One rectangular block, sized in cells rather than in metres.
+
+  Sizing in cells is the point: the fitted geometry fails because 29 of its
+  70 boxes are under three cells wide and so have no interior, and a body
+  the grid cannot resolve cannot be given a sensible boundary condition.
+
+  Buried and topped exactly as a fitted box is, so it merges with the ground
+  rather than floating above it.
+
+  Args:
+    terrain: `(nx, ny)` terrain height above the domain floor.
+    dx: Horizontal spacing.
+    dz: Vertical spacing.
+    cells: Size on every axis, in cells.
+    yaw_deg: Rotation about z, in degrees.
+    position: `(x, y)` in metres from the domain corner, or None to use the
+      flattest window near the centre.
+
+  Returns:
+    Arrays ready for `signed_distance.batched_boxes`.
+
+  Raises:
+    ValueError: If `cells` is under 3, where the box has no interior.
+  """
+  if cells < 3:
+    raise ValueError(
+        f'`single_building_cells` is {cells}. A box under 3 cells wide has '
+        'no cell that is not on its own surface, so every solid cell is a '
+        'ghost cell and the interpolation has nothing interior to stand on. '
+        'This is exactly the defect the fitted geometry has.'
+    )
+  width, height = cells * dx, cells * dz
+  x, y = position if position is not None else flattest_patch(
+      terrain, dx, window_m=1.5 * width
+  )
+
+  # The ground under the footprint, using the circumscribed radius so a
+  # rotated box is covered whatever its yaw.
+  nx, ny = terrain.shape
+  xs = (np.arange(nx) + 0.0) * dx
+  ys = (np.arange(ny) + 0.0) * dx
+  xx, yy = np.meshgrid(xs, ys, indexing='ij')
+  under = np.hypot(xx - x, yy - y) <= 0.5 * width * np.sqrt(2.0) + dx
+  ground = terrain[under] if under.any() else terrain.ravel()
+
+  base = float(ground.min()) - _BURY_DEPTH_M
+  top = float(np.median(ground)) + height
+  logging.info(
+      'single building: %.0f x %.0f m footprint, %.0f m tall, yaw %.0f deg '
+      '(%d x %d x %d cells)', width, width, height, yaw_deg, cells, cells,
+      cells,
+  )
+  return {
+      'box_centres': np.asarray(
+          [[x, y, 0.5 * (base + top)]], np.float32
+      ),
+      'box_half_extents': np.asarray(
+          [[0.5 * width, 0.5 * width, 0.5 * (top - base)]], np.float32
+      ),
+      'box_rotations_deg': np.asarray([[0.0, 0.0, yaw_deg]], np.float32),
+      'box_building_id': np.asarray([0], np.int32),
+  }
+
+
+def _no_buildings() -> dict[str, np.ndarray]:
+  """An empty box set, for the terrain-only control."""
+  return {
+      'box_centres': np.zeros((0, 3), np.float32),
+      'box_half_extents': np.zeros((0, 3), np.float32),
+      'box_rotations_deg': np.zeros((0, 3), np.float32),
+      'box_building_id': np.zeros((0,), np.int32),
+  }
+
+
+def _footprint_corners(
+    centre: np.ndarray, half: np.ndarray, yaw_deg: float
+) -> np.ndarray:
+  """The four plan-view corners of one box, in world coordinates."""
+  local = np.array([[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]])
+  return _from_frame(local * half[:2], yaw_deg) + centre[:2]
+
+
+def _polygon_gap(a: np.ndarray, b: np.ndarray) -> float:
+  """Least distance between two convex plan-view polygons, 0 if they touch.
+
+  Circumscribed radii will not do here. A box rotated 45 degrees has a
+  circumradius 1.41 times its half width, so two houses a comfortable four
+  cells apart can appear to overlap. This is the real separation.
+
+  Args:
+    a: `(n, 2)` corners of the first polygon, in order.
+    b: `(m, 2)` corners of the second.
+
+  Returns:
+    The gap in metres, 0 when they intersect.
+  """
+
+  def inside(point, poly):
+    # Convex, corners ordered, so the point is inside when it is on the same
+    # side of every edge.
+    edges = np.roll(poly, -1, axis=0) - poly
+    cross = np.cross(edges, point - poly)
+    return bool(np.all(cross >= -1e-9) or np.all(cross <= 1e-9))
+
+  if any(inside(p, b) for p in a) or any(inside(p, a) for p in b):
+    return 0.0
+
+  def point_to_edges(point, poly):
+    starts = poly
+    ends = np.roll(poly, -1, axis=0)
+    seg = ends - starts
+    length2 = np.einsum('ij,ij->i', seg, seg)
+    t = np.clip(
+        np.einsum('ij,ij->i', point - starts, seg) / np.maximum(length2, 1e-12),
+        0.0, 1.0,
+    )
+    nearest = starts + t[:, None] * seg
+    return float(np.linalg.norm(nearest - point, axis=1).min())
+
+  return min(
+      min(point_to_edges(p, b) for p in a),
+      min(point_to_edges(p, a) for p in b),
+  )
+
+
+def report_resolvability(
+    boxes: dict[str, np.ndarray], dx: float, dz: float
+) -> None:
+  """Says whether the grid can actually carry the geometry it was handed.
+
+  Two numbers decide that, and neither is visible in the solidity table.
+
+  A box under three cells wide has no cell that is not on its own surface,
+  so the ghost-point interpolation has nothing interior to stand on.
+  Measured on the fitted Mandeville scene, where 29 of 70 boxes are under
+  three cells: 1 041 ghost cells end up with no fluid at all among the eight
+  nodes of their interpolation stencil, against zero for terrain alone or
+  for terrain plus one well-resolved block.
+
+  A gap under about three cells between neighbouring *buildings* is the same
+  problem seen from the fluid side: the flow between them is carried by a
+  couple of cells whose stencils reach into both bodies. Parts of a single
+  building abut by construction and are excluded, or the figure would
+  measure the splitter rather than the spacing of the houses.
+
+  Both are cheap to check here and expensive to discover at step 300.
+
+  Args:
+    boxes: The emitted boxes.
+    dx: Horizontal spacing.
+    dz: Vertical spacing.
+  """
+  centres = boxes['box_centres']
+  half = boxes['box_half_extents']
+  yaw = boxes['box_rotations_deg'][:, 2] if len(centres) else np.zeros(0)
+  owner = boxes.get('box_building_id', np.arange(len(centres)))
+  if not len(centres):
+    print('\nno buildings in this scene (terrain only)')
+    return
+
+  width = np.stack(
+      [2 * half[:, 0] / dx, 2 * half[:, 1] / dx, 2 * half[:, 2] / dz], -1
+  )
+  narrow = width[:, :2].min(axis=1)
+
+  print('\nwhat the grid can carry (widths and gaps in CELLS):')
+  print('  narrowest horizontal side: min %.1f, median %.1f, max %.1f'
+        % (narrow.min(), np.median(narrow), narrow.max()))
+  # Total extent, not the visible height: every box is sunk `_BURY_DEPTH_M`
+  # below the lowest ground under it so it merges with the terrain.
+  print('  total vertical extent, burial included: min %.1f, median %.1f'
+        % (width[:, 2].min(), np.median(width[:, 2])))
+  for threshold in (2, 3, 4):
+    count = int((narrow < threshold).sum())
+    if count:
+      print('  %2d of %d boxes are under %d cells wide%s'
+            % (count, len(centres), threshold,
+               '  <-- no interior at all' if threshold == 3 else ''))
+
+  corners = [_footprint_corners(centres[i], half[i], float(yaw[i]))
+             for i in range(len(centres))]
+  gaps = []
+  for i in range(len(centres)):
+    others = [j for j in range(len(centres)) if owner[j] != owner[i]]
+    if others:
+      gaps.append(min(_polygon_gap(corners[i], corners[j]) for j in others))
+  if gaps:
+    gaps = np.asarray(gaps) / dx
+    print('  gap to the nearest *other building*: min %.1f, median %.1f'
+          % (gaps.min(), np.median(gaps)))
+    tight = int((gaps < 3).sum())
+    if tight:
+      print('  %d of %d boxes sit under 3 cells from another building'
+            '  <-- the flow between them is unresolved'
+            % (tight, len(gaps)))
+  else:
+    print('  only one building, so no inter-building gaps')
 
 
 def pad_with_margin(
@@ -781,9 +1071,28 @@ def main(_):
   z_top = max(canopy_top, float(terrain.max())) + _AIR_ABOVE.value
   nz = int(np.ceil((z_top - z_floor) / dz / _CELL_MULTIPLE) * _CELL_MULTIPLE)
   fuel = resample_fuel(grid, terrain, crop, dx, dz, z_floor, nz)
-  boxes, report = extract_buildings(
-      voxels, grid, crop, _MAX_BOXES.value, _MIN_AREA.value, dx, z_floor
-  )
+
+  report: list[dict[str, Any]] = []
+  if _BUILDINGS.value == 'fitted':
+    boxes, report = extract_buildings(
+        voxels, grid, crop, _MAX_BOXES.value, _MIN_AREA.value, dx, z_floor
+    )
+  elif _BUILDINGS.value == 'single':
+    position = (
+        (_SINGLE_X.value, _SINGLE_Y.value)
+        if _SINGLE_X.value is not None and _SINGLE_Y.value is not None
+        else None
+    )
+    # Floor-relative in, floor-relative out, matching what
+    # `extract_buildings` returns. The terrain array is still absolute at
+    # this point and is converted when the payload is written.
+    boxes = single_building(
+        terrain - z_floor, dx, dz, _SINGLE_CELLS.value, _SINGLE_YAW.value,
+        position,
+    )
+  else:
+    boxes = _no_buildings()
+    logging.info('no buildings: terrain-only control')
 
   terrain, fuel, boxes, crop = pad_with_margin(
       terrain, fuel, boxes, crop, dx, _MARGIN.value
@@ -798,20 +1107,23 @@ def main(_):
       100.0 * (fuel > 0).mean(), float(fuel.max()),
   )
 
-  print('\nper-building fit (solidity is the fraction of the boxed area '
-        'that is really building):')
-  print('  %-5s %5s %8s %9s %9s %9s'
-        % ('id', 'boxes', 'yaw', 'roof m', 'area m2', 'solidity'))
-  for entry in sorted(report, key=lambda e: e['solidity']):
-    flag = '' if entry['solidity'] >= 0.75 else '   <-- check the overlay'
-    print('  %-5d %5d %7.1f%s %9.1f %9.0f %9.2f%s'
-          % (entry['label'], entry['boxes'], entry['yaw_deg'], '\u00b0',
-             entry['roof_height_m'], entry['footprint_m2'],
-             entry['solidity'], flag))
-  solidities = [e['solidity'] for e in report]
-  print('\n%d buildings, %d boxes; solidity median %.2f, worst %.2f'
-        % (len(report), len(boxes['box_centres']),
-           float(np.median(solidities)), min(solidities)))
+  if report:
+    print('\nper-building fit (solidity is the fraction of the boxed area '
+          'that is really building):')
+    print('  %-5s %5s %8s %9s %9s %9s'
+          % ('id', 'boxes', 'yaw', 'roof m', 'area m2', 'solidity'))
+    for entry in sorted(report, key=lambda e: e['solidity']):
+      flag = '' if entry['solidity'] >= 0.75 else '   <-- check the overlay'
+      print('  %-5d %5d %7.1f%s %9.1f %9.0f %9.2f%s'
+            % (entry['label'], entry['boxes'], entry['yaw_deg'], '\u00b0',
+               entry['roof_height_m'], entry['footprint_m2'],
+               entry['solidity'], flag))
+    solidities = [e['solidity'] for e in report]
+    print('\n%d buildings, %d boxes; solidity median %.2f, worst %.2f'
+          % (len(report), len(boxes['box_centres']),
+             float(np.median(solidities)), min(solidities)))
+
+  report_resolvability(boxes, dx, dz)
 
   payload = dict(boxes)
   payload.update({
