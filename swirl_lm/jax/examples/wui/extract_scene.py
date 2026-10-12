@@ -101,11 +101,39 @@ _MARGIN = flags.DEFINE_float(
     'and the margin carries no fuel.',
 )
 _MAX_BOXES = flags.DEFINE_integer(
-    'max_boxes', 3, 'Most boxes allowed per building.'
+    'max_boxes', 1,
+    'Most boxes allowed per building. One, not three, because splitting a '
+    'footprint measurably hurts: the parts are bounding boxes of disjoint '
+    'point sets, not abutting pieces, so they leave a one or two cell sliver '
+    'of fluid inside the house -- 21 of 63 boxes did on this scene. Closing '
+    'those slivers is worse still, since inflating the parts to meet creates '
+    'more concave creases than it removes. Measured, ghost cells with no '
+    'fluid at all in their interpolation stencil: 1 041 at three boxes with '
+    'one-cell parts, 885 at three boxes with the slivers closed, and 233 at '
+    'one box per building. The cost is a blockier fit, median solidity 0.72 '
+    'against 0.83.',
 )
 _MIN_AREA = flags.DEFINE_float(
     'min_footprint_area', 40.0,
     'Footprints smaller than this, in square metres, are discarded as debris.',
+)
+_MIN_BOX_CELLS = flags.DEFINE_integer(
+    'min_box_cells', 3,
+    'Narrowest box the fit may produce, in cells of the solver grid. A body '
+    'under three cells wide has no cell that is not on its own surface, so '
+    'the ghost-point interpolation has nothing interior to stand on. '
+    'Measured on this scene at one cell: 29 of 70 boxes had no interior and '
+    '1 041 ghost cells ended up with no fluid at all in their stencil.',
+)
+_CLOSE_GAPS_CELLS = flags.DEFINE_integer(
+    'close_gaps_under_cells', 3,
+    'Alleys narrower than this, in cells, are closed by growing the two '
+    'boxes until they meet. A gap of one or two cells is not flow the grid '
+    'can carry, but it is enough to put ghost cells in it whose stencils '
+    'reach into both buildings. Closing it makes the pair one solid, which '
+    'the grid can represent; the error is at most this many cells. Boxes '
+    'that already touch or overlap are left alone -- their union is one '
+    'body and causes no trouble. Set to 0 to leave every alley as fitted.',
 )
 _BUILDINGS = flags.DEFINE_enum(
     'buildings', 'fitted', ['fitted', 'single', 'none'],
@@ -442,6 +470,7 @@ def extract_buildings(
     max_boxes: int,
     min_area_m2: float,
     min_width: float,
+    min_gap: float,
     z_floor: float,
 ) -> tuple[dict[str, np.ndarray], list[dict[str, Any]]]:
   """Fits oriented boxes to every building footprint.
@@ -456,8 +485,9 @@ def extract_buildings(
     crop: `(west, south, east, north)` of the domain, in UTM.
     max_boxes: Most boxes per building.
     min_area_m2: Footprints below this are discarded as debris.
-    min_width: Narrowest box to produce, in metres; use the solver's
-      horizontal cell size.
+    min_width: Narrowest box to produce, in metres.
+    min_gap: Alleys narrower than this, in metres, are closed by growing
+      the boxes on either side until they meet.
     z_floor: Elevation of the bottom of the solver domain, which the box
       centres are measured from.
 
@@ -551,6 +581,12 @@ def extract_buildings(
 
   if not centres:
     raise ValueError('every footprint was pruned; check --min_footprint_area')
+
+  half_extents = _close_narrow_gaps(
+      np.asarray(centres, np.float64), np.asarray(half_extents, np.float64),
+      np.asarray(rotations, np.float64), np.asarray(owners, np.int32),
+      min_gap,
+  )
   boxes_out = {
       'box_centres': np.asarray(centres, np.float32),
       'box_half_extents': np.asarray(half_extents, np.float32),
@@ -855,6 +891,86 @@ def _polygon_gap(a: np.ndarray, b: np.ndarray) -> float:
   )
 
 
+def _close_narrow_gaps(
+    centres: np.ndarray,
+    half: np.ndarray,
+    rotations: np.ndarray,
+    owner: np.ndarray,
+    min_gap: float,
+    passes: int = 50,
+) -> np.ndarray:
+  """Grows boxes until any alley too narrow for the grid is closed.
+
+  A one- or two-cell gap between two buildings is the worst case for a
+  ghost-point method: too narrow to carry flow, but wide enough to hold
+  ghost cells whose interpolation stencils reach into both bodies. Measured
+  on the fitted Mandeville scene, 22 of 63 boxes sit in one.
+
+  Closing the alley turns the pair into a single solid, which the grid can
+  represent, at a cost of at most `min_gap` in position. Boxes that already
+  touch or overlap are left alone: their union is one body and behaves.
+
+  Applies between parts of one building as well as between buildings: a
+  split produces bounding boxes of disjoint point sets, which can leave a
+  sliver inside a single house.
+
+  Only horizontal extents are grown. The vertical one is set by the roof and
+  the burial depth, and two buildings do not form an alley in z.
+
+  Args:
+    centres: `(n, 3)` box centres.
+    half: `(n, 3)` half extents.
+    rotations: `(n, 3)` rotations in degrees.
+    owner: `(n,)` which building each box belongs to.
+    min_gap: Alleys narrower than this, in metres, are closed.
+    passes: Most sweeps to take. Growing one box can narrow another gap, so
+      this iterates to a fixed point and stops early once nothing grows.
+      Measured on this scene it converges in about 25; three was not
+      enough and left 11 alleys open.
+
+  Returns:
+    The half extents, with horizontal ones grown where needed.
+  """
+  if min_gap <= 0.0 or len(centres) < 2:
+    return half
+  half = half.copy()
+  for _ in range(passes):
+    corners = [_footprint_corners(centres[i], half[i], float(rotations[i, 2]))
+               for i in range(len(centres))]
+    # Pairwise, not per box. Taking the nearest neighbour of each box hides
+    # the case that actually bites: a box touching one neighbour reports a
+    # gap of zero and is left alone, while its one-cell gap to a *different*
+    # neighbour stays open. That is what crashed the single-rectangle fit --
+    # box 19 touched box 20 and sat 0.4 cells from box 15.
+    #
+    # Siblings count too. A split emits bounding boxes of disjoint point
+    # sets, not abutting pieces, so they leave slivers of their own.
+    grown = 0
+    for i in range(len(centres)):
+      for j in range(i + 1, len(centres)):
+        gap = _polygon_gap(corners[i], corners[j])
+        # Zero means touching or overlapping, which is already safe.
+        if 1e-9 < gap < min_gap:
+          half[i, :2] += 0.5 * gap + 1e-3
+          half[j, :2] += 0.5 * gap + 1e-3
+          grown += 1
+          corners[i] = _footprint_corners(
+              centres[i], half[i], float(rotations[i, 2])
+          )
+          corners[j] = _footprint_corners(
+              centres[j], half[j], float(rotations[j, 2])
+          )
+    if not grown:
+      break
+  else:
+    logging.warning(
+        'gap closing did not reach a fixed point in %d passes; some alleys '
+        'narrower than %.1f m remain, and the ghost cells in them will '
+        'interpolate from both buildings', passes, min_gap,
+    )
+  return half
+
+
 def report_resolvability(
     boxes: dict[str, np.ndarray], dx: float, dz: float
 ) -> None:
@@ -911,22 +1027,36 @@ def report_resolvability(
 
   corners = [_footprint_corners(centres[i], half[i], float(yaw[i]))
              for i in range(len(centres))]
-  gaps = []
-  for i in range(len(centres)):
-    others = [j for j in range(len(centres)) if owner[j] != owner[i]]
-    if others:
-      gaps.append(min(_polygon_gap(corners[i], corners[j]) for j in others))
-  if gaps:
-    gaps = np.asarray(gaps) / dx
-    print('  gap to the nearest *other building*: min %.1f, median %.1f'
-          % (gaps.min(), np.median(gaps)))
-    tight = int((gaps < 3).sum())
-    if tight:
-      print('  %d of %d boxes sit under 3 cells from another building'
-            '  <-- the flow between them is unresolved'
-            % (tight, len(gaps)))
-  else:
-    print('  only one building, so no inter-building gaps')
+  # Every pair, not each box's nearest neighbour: a box that touches one
+  # neighbour can still sit one cell from another, and a per-box minimum
+  # hides exactly that.
+  gaps = [
+      _polygon_gap(corners[i], corners[j])
+      for i in range(len(centres))
+      for j in range(i + 1, len(centres))
+  ]
+  if not gaps:
+    print('  only one box, so no gaps')
+    return
+
+  gaps = np.asarray(gaps) / dx
+  gaps = gaps[gaps < 6.0]          # distant pairs say nothing
+  if not len(gaps):
+    print('  every pair is clear by 6+ cells')
+    return
+  # Zero means touching or overlapping. That is **safe**: the union is a
+  # single solid and there is no fluid between them. The dangerous case is a
+  # gap that is narrow but not zero -- too thin to carry flow, wide enough to
+  # hold ghost cells whose stencils reach into both bodies.
+  joined = int((gaps < 1e-6).sum())
+  narrow = int(((gaps > 1e-6) & (gaps < 3)).sum())
+  clear = int((gaps >= 3).sum())
+  print('  close pairs: %d touch or overlap (one solid, fine), %d are clear '
+        'by 3 to 6 cells' % (joined, clear))
+  if narrow:
+    print('  %d PAIRS sit in a gap of under 3 cells that is not closed'
+          '  <-- too thin to carry flow, wide enough to break the stencils'
+          % narrow)
 
 
 def pad_with_margin(
@@ -1075,7 +1205,8 @@ def main(_):
   report: list[dict[str, Any]] = []
   if _BUILDINGS.value == 'fitted':
     boxes, report = extract_buildings(
-        voxels, grid, crop, _MAX_BOXES.value, _MIN_AREA.value, dx, z_floor
+        voxels, grid, crop, _MAX_BOXES.value, _MIN_AREA.value,
+        _MIN_BOX_CELLS.value * dx, _CLOSE_GAPS_CELLS.value * dx, z_floor,
     )
   elif _BUILDINGS.value == 'single':
     position = (
