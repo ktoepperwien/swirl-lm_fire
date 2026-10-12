@@ -641,6 +641,21 @@ def resample_terrain(
 ) -> np.ndarray:
   """Terrain elevation on the target horizontal mesh, above sea level.
 
+  Interpolated bilinearly rather than sampled at the nearest cell, which
+  matters only when the target is finer than the source and matters a lot
+  then. The FastFuels elevation is on a 2 m mesh derived from a 10 m DEM, so
+  asking for 1 m adds no information -- a mid row gains 4 distinct elevations
+  out of 57 while the cell count quadruples -- but nearest-cell sampling
+  turns each source cell into a block, and the result is a staircase.
+  Measured on this terrain at 1 m: nearest gives a median slope of 26.6
+  degrees with 35.7% of cells flat, against 19.5 and 19.7% at 2 m, because
+  the plateaus widen and the step edges steepen. Bilinear gives 20.6 degrees
+  and 13.2%. Steep steps are precisely what a height-field ghost boundary
+  handles worst.
+
+  At the source spacing the two agree exactly, so this changes nothing for a
+  2 m scene.
+
   Args:
     grid: The FastFuels grid.
     crop: `(west, south, east, north)` in UTM.
@@ -656,8 +671,24 @@ def resample_terrain(
   ny = int(round((north - south) / dx))
   xs = west + (np.arange(nx) + 0.5) * dx
   ys = south + (np.arange(ny) + 0.5) * dx
-  xx, yy = np.meshgrid(xs, ys, indexing='ij')
-  return grid.elevation_at(xx.ravel(), yy.ravel()).reshape(nx, ny)
+
+  rows, cols = grid.elevation.shape
+  # Row 0 of the raster is the north edge, hence `north - y`.
+  fx = np.clip((xs - grid.west) / grid.dx - 0.5, 0.0, cols - 1.0)
+  fy = np.clip((grid.north - ys) / grid.dx - 0.5, 0.0, rows - 1.0)
+  i0 = np.floor(fx).astype(int)
+  j0 = np.floor(fy).astype(int)
+  i1 = np.minimum(i0 + 1, cols - 1)
+  j1 = np.minimum(j0 + 1, rows - 1)
+  tx = (fx - i0)[:, None]
+  ty = (fy - j0)[None, :]
+  corner = lambda j, i: grid.elevation[np.ix_(j, i)].T
+  return (
+      (1.0 - tx) * (1.0 - ty) * corner(j0, i0)
+      + tx * (1.0 - ty) * corner(j0, i1)
+      + (1.0 - tx) * ty * corner(j1, i0)
+      + tx * ty * corner(j1, i1)
+  )
 
 
 def resample_fuel(
