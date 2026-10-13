@@ -35,11 +35,11 @@ import abc
 import dataclasses
 import os
 
+from etils import epath
 import jax
 import jax.numpy as jnp
 import netCDF4 as nc
 import numpy as np
-from tensorflow.io import gfile
 
 # Type aliases for tensor and dimension maps.
 TensorMap = dict[str, jax.Array]
@@ -72,8 +72,7 @@ class DataLoaderBase(metaclass=abc.ABCMeta):
     if os.path.exists(local_filename):
       assert os.path.isfile(local_filename)
     else:
-      with gfile.GFile(local_filename, 'w') as local_file:
-        local_file.write(gfile.GFile(cns_file_path, mode='rb').read())
+      epath.Path(cns_file_path).copy(local_filename)
     return local_filename
 
   @classmethod
