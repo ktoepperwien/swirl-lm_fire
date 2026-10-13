@@ -58,11 +58,7 @@ print(cx, cy, cz, cx * cy * cz)
 PY
 )
 
-if [[ "${JAX_PLATFORMS}" == *"cuda"* || "${JAX_PLATFORMS}" == *"gpu"* ]]; then
-  # cuDNN has no algorithm for the stencil convolutions this solver emits, so
-  # autotuning fails outright on GPU. See MEMORY.md, kernel-operator defects.
-  export XLA_FLAGS="--xla_gpu_autotune_level=0 ${XLA_FLAGS:-}"
-else
+if [[ "${JAX_PLATFORMS}" != *"cuda"* && "${JAX_PLATFORMS}" != *"gpu"* ]]; then
   export XLA_FLAGS="--xla_force_host_platform_device_count=${NCORES} ${XLA_FLAGS:-}"
 fi
 
