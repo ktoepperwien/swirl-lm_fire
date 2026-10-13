@@ -53,16 +53,29 @@ _EXACT = 1e-5
 
 
 def _reliable(geom) -> np.ndarray:
-  """Ghost cells whose value cannot have been polluted by a fallback cell.
+  """Ghost cells whose value cannot have been polluted by a first-order one.
 
-  A fallback cell uses the nearest-fluid approximation and is only
-  first-order, so it is excluded from any exactness claim. It also appears as
-  a stencil corner for its neighbours, and those neighbours for theirs, so the
-  exclusion has to be taken to its transitive closure -- measured, it spreads
-  exactly two levels for an oblique plane, and stopping at one level leaves a
-  2e-4 residual that looks like a bug but is not.
+  Two treatments are deliberately first-order and so excluded from any
+  exactness claim.
+
+  A **fallback** cell uses the nearest-fluid approximation.
+
+  A cell **anchored on the body intercept** has had the weight of stencil
+  nodes nothing ever writes moved onto the intercept. The intercept carries
+  the surface value, which for a linear field is the value at a different
+  point, so the interpolation is no longer exact there. That is the trade the
+  anchoring makes, and it is worth making: before it, those nodes were read
+  straight out of the drifting interior of the body. Note this test harness
+  leaves the true field in those cells, so the old exactness result was an
+  artefact of the harness rather than a property of a real run.
+
+  Either kind also appears as a stencil corner for its neighbours, and those
+  neighbours for theirs, so the exclusion has to be taken to its transitive
+  closure -- measured, it spreads exactly two levels for an oblique plane,
+  and stopping at one level leaves a 2e-4 residual that looks like a bug but
+  is not.
   """
-  bad = geom.fallback.copy()
+  bad = (geom.fallback | (geom.bi_weight > 1e-6)).copy()
   while True:
     bad_flat = set(geom.gc_index[bad].tolist())
     grown = bad.copy()
@@ -269,6 +282,69 @@ class ExactnessTest(parameterized.TestCase):
     )
     np.testing.assert_allclose(got, want, atol=_EXACT)
 
+  def test_the_weights_still_partition_unity(self):
+    """Moving weight to the intercept must not create or destroy any.
+
+    The trilinear weights sum to one, so a constant field is reproduced
+    exactly. The transfer keeps that only if nothing leaks:
+    `sum(alpha) + w_self + w_bi == 1` for every cell.
+    """
+    ax = _uniform(20)
+    phi = sdf.plane((0.5, 0.5, 0.5), (0.3, -0.7, 1.0))
+    geom = gp.build(phi, (ax, ax, ax), halo_width=1, dims=(0, 1, 2))
+    total = (geom.alpha.sum(axis=1) + geom.self_weight + geom.bi_weight)
+    np.testing.assert_allclose(total, 1.0, atol=1e-6)
+
+  def test_a_constant_field_is_exact_even_where_anchored(self):
+    """Anchoring costs linear accuracy, not constant-field accuracy.
+
+    For a constant field the intercept carries the same value as every other
+    node, so the convex combination reproduces it exactly. This is what makes
+    the transfer safe to apply unconditionally.
+    """
+    ax = _uniform(20)
+    phi = sdf.plane((0.5, 0.5, 0.5), (0.3, -0.7, 1.0))
+    geom = gp.build(phi, (ax, ax, ax), halo_width=1, dims=(0, 1, 2))
+    self.assertGreater(int((geom.bi_weight > 1e-6).sum()), 0,
+                       'this geometry has no degenerate stencils to test')
+    zeta, gamma = gp.dirichlet_coefficients(geom, 5.0)
+    u = jnp.full(geom.shape, 5.0, jnp.float64)
+    got = np.asarray(gp.apply(u, geom, zeta, gamma, num_sweeps=4))
+    idx = np.unravel_index(geom.gc_index, geom.shape)
+    np.testing.assert_allclose(got[idx], 5.0, atol=_EXACT)
+
+  def test_a_fully_starved_stencil_takes_the_boundary_value(self):
+    """With no usable node at all the ghost cell becomes the surface value.
+
+    That is the right answer rather than a lucky one: with `w_bi == 1` the
+    interpolated image-point value *is* the intercept value, and the Dirichlet
+    relation then collapses to `phi_GC = Phi`. Before the transfer such a cell
+    was determined entirely by other solid cells, with nothing anchoring it.
+    """
+    geom = gp.GhostPoints(
+        gc_index=np.zeros(1, np.int32),
+        corner_index=np.zeros((1, 8), np.int32),
+        alpha=np.zeros((1, 8), np.float32),
+        self_weight=np.zeros(1, np.float32),
+        bi_weight=np.ones(1, np.float32),
+        zeta_dirichlet=np.array([-1.0], np.float32),
+        separation=np.array([2.0], np.float32),
+        normal=np.zeros((1, 3), np.float32),
+        distance=np.array([1.0], np.float32),
+        probe=np.array([2.0], np.float32),
+        signed_distance=np.zeros((1, 1, 1), np.float32),
+        fallback=np.zeros(1, bool),
+        shape=(1, 1, 1),
+        num_capped=0,
+        num_fallback=0,
+        min_probe=2.0,
+        max_reach_cells=(0.0, 0.0, 0.0),
+    )
+    zeta, gamma = gp.dirichlet_coefficients(geom, 3.0)
+    got = np.asarray(gp.apply(jnp.zeros(geom.shape, jnp.float64), geom,
+                              zeta, gamma))
+    np.testing.assert_allclose(got.reshape(-1)[0], 3.0, atol=_EXACT)
+
   def test_exact_on_a_stretched_grid(self):
     # The enclosing cell and the weights come from a coordinate search, so a
     # graded axis must be just as exact as a uniform one.
@@ -310,6 +386,7 @@ class ExactnessTest(parameterized.TestCase):
         corner_index=np.zeros((1, 8), np.int32),
         alpha=np.zeros((1, 8), np.float32),
         self_weight=np.zeros(1, np.float32),
+        bi_weight=np.zeros(1, np.float32),
         zeta_dirichlet=np.array([-1.0 / (m - 1.0)], np.float32),
         separation=np.array([m * d], np.float32),
         normal=np.zeros((1, 3), np.float32),
