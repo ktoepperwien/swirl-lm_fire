@@ -613,8 +613,7 @@ class ApplyKernelConvOp(ApplyKernelOp):
     if custom_kernel_dict:
       for name, (coeffs, offset) in custom_kernel_dict.items():
         if name not in self._slice_kernels:
-          shifts = [j - offset for j in range(len(coeffs))]  # pyrefly: ignore[unsupported-operation]
-          self._slice_kernels[name] = _discard_zero_coefficients(coeffs, shifts)  # pyrefly: ignore[bad-argument-type]
+          self._slice_kernels[name] = _to_slice_stencil(coeffs, offset)
 
   def add_kernel(self, custom_kernel_dict: ExternalDictKernelType):
     """Adds a customized kernel to the kernel library."""
@@ -629,8 +628,7 @@ class ApplyKernelConvOp(ApplyKernelOp):
     # format {name: {'coeff': ..., 'shift': ...}}.
     for name, (coeffs, offset) in custom_kernel_dict.items():
       if name not in self._slice_kernels:
-        shifts = [j - offset for j in range(len(coeffs))]  # pyrefly: ignore[unsupported-operation]
-        self._slice_kernels[name] = _discard_zero_coefficients(coeffs, shifts)  # pyrefly: ignore[bad-argument-type]
+        self._slice_kernels[name] = _to_slice_stencil(coeffs, offset)
 
   def apply_kernel_op(
       self, array: ScalarField, name: str, axis: str
@@ -677,6 +675,34 @@ def _discard_zero_coefficients(
       new_coeff.append(c)
       new_shift.append(s)
   return {'coeff': tuple(new_coeff), 'shift': tuple(new_shift)}
+
+
+def _to_slice_stencil(
+    coeffs: list[float] | tuple[float, ...], offset: int
+) -> SliceKernelType:
+  """Rewrites a convolution stencil in the slice backend's convention.
+
+  The two backends index in opposite directions, which is why this lives in
+  one place. A convolution stencil `(coeffs, offset)` means
+
+      out[i] = sum_j coeffs[j] * array[i + j - offset],
+
+  with `offset` naming the entry that lands on the output cell. The slice
+  backend takes shifts in the sense of `np.roll`, as
+  `common_ops.finite_diff_with_slice` documents, so a shift `s` contributes
+  `array[i - s]`. The shift for coefficient `j` is therefore `offset - j`,
+  not `j - offset`.
+
+  Args:
+    coeffs: The stencil coefficients, in index order.
+    offset: The index within `coeffs` that lands on the output cell.
+
+  Returns:
+    The slice-backend stencil, with zero coefficients dropped.
+  """
+  return _discard_zero_coefficients(
+      coeffs, [offset - j for j in range(len(coeffs))]
+  )
 
 
 def _add_customized_slice_kernel(
