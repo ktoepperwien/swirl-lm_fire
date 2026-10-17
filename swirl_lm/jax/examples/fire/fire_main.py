@@ -7,6 +7,7 @@ import jax
 
 from swirl_lm.base import parameters_pb2
 from swirl_lm.jax.base import parameters as parameters_lib
+from swirl_lm.jax.boundary_condition import boundary_condition_utils
 from swirl_lm.jax.core import driver as driver_lib
 from swirl_lm.jax.examples.fire import fire
 
@@ -51,6 +52,18 @@ _RESTART_STEP = flags.DEFINE_integer(
     'deliberately, or to resume a checkpoint written before the step was '
     'recorded in its metadata.',
 )
+_RESTART_FIELDS = flags.DEFINE_list(
+    'restart_fields',
+    None,
+    'Variables to restore, overriding the default. Naming a variable the '
+    'checkpoint does not hold is harmless; it is skipped.',
+)
+
+# Solid-phase combustion state. `dry_wood_update_fn` advances `rho_f` and
+# `T_s` every step as the fuel is consumed, so a restart that re-initialised
+# them would put the burnt fuel back. The remaining two are fuel properties,
+# static in practice, and restoring them costs nothing.
+_SOLID_PHASE_KEYS = ('rho_f', 'T_s', 'rho_m', 'phi_w')
 
 FLAGS = flags.FLAGS
 
@@ -86,6 +99,39 @@ def _check_restart_path() -> str | None:
   return path
 
 
+def _restart_fields(
+    params: parameters_lib.SwirlLMParameters,
+) -> list[str] | None:
+  """Returns the variables to restore from the checkpoint.
+
+  The driver's default covers the prognostic state, the accumulated time and
+  the boundary conditions, and recomputes everything else from the restart
+  configuration. For this case that default is not enough: the solid-phase
+  combustion state evolves as the fire burns and is not prognostic, so it has
+  to be named explicitly.
+
+  Args:
+    params: The resolved simulation parameters.
+
+  Returns:
+    The variables to restore, or None to take the driver's default when this
+    is not a restart.
+  """
+  if _RESTART_FIELDS.value is not None:
+    return _RESTART_FIELDS.value
+  if _RESTART_FROM.value is None:
+    return None
+
+  essential_keys, _, _ = driver_lib._get_state_keys(params)  # pylint: disable=protected-access
+  fields = list(essential_keys) + [driver_lib.TIME_VARNAME]
+  fields += [
+      key
+      for key in params.additional_state_keys
+      if boundary_condition_utils.is_bc_key(key) or key in _SOLID_PHASE_KEYS
+  ]
+  return fields
+
+
 def main(_):
   params = _make_params()
   restart_from = _check_restart_path()
@@ -95,11 +141,14 @@ def main(_):
   params.additional_states_update_fn = simulation.additional_states_update_fn
   params.preprocessing_states_update_fn = simulation.pre_simulation_update_fn
 
+  restart_fields = _restart_fields(params)
   if restart_from is not None:
     logging.info(
-        'Resuming from %s; %d step(s) will be run on top of its step.',
+        'Resuming from %s; %d step(s) will be run on top of its step. '
+        'Restoring: %s',
         restart_from,
         FLAGS.num_cycles * FLAGS.num_steps,
+        sorted(restart_fields) if restart_fields else '(driver default)',
     )
 
   # Run the simulation using the JAX driver.
@@ -112,6 +161,7 @@ def main(_):
       checkpoint_interval=FLAGS.checkpoint_interval,
       restart_from=restart_from,
       restart_step=_RESTART_STEP.value,
+      restart_fields=restart_fields,
   )
 
 
