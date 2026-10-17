@@ -1,5 +1,7 @@
 from absl import app
 from absl import flags
+from absl import logging
+from etils import epath
 from google.protobuf import text_format
 import jax
 
@@ -33,6 +35,22 @@ _CHECKPOINT_INTERVAL = flags.DEFINE_integer(
     10,
     'interval at which to write solution.',
 )
+_RESTART_FROM = flags.DEFINE_string(
+    'restart_from',
+    None,
+    'A zarr checkpoint to resume from, such as '
+    '<checkpoint_dir>/step_000500.zarr. The requested steps are run on top of '
+    'the step that checkpoint records, so the step index continues and the '
+    'resumed run does not overwrite the output it started from. Writing into '
+    'the same --checkpoint_dir is therefore fine.',
+)
+_RESTART_STEP = flags.DEFINE_integer(
+    'restart_step',
+    None,
+    'Overrides the step index to continue from. Needed only to renumber '
+    'deliberately, or to resume a checkpoint written before the step was '
+    'recorded in its metadata.',
+)
 
 FLAGS = flags.FLAGS
 
@@ -48,13 +66,41 @@ def _make_params() -> parameters_lib.SwirlLMParameters:
   return parameters_lib.SwirlLMParameters(config)
 
 
+def _check_restart_path() -> str | None:
+  """Returns the checkpoint to resume from, failing early if it is missing.
+
+  A mistyped path would otherwise surface as an obscure zarr error after the
+  job has queued, compiled and placed the state.
+
+  Returns:
+    The checkpoint path, or None when this is not a restart.
+
+  Raises:
+    ValueError: If the path does not exist.
+  """
+  path = _RESTART_FROM.value
+  if path is None:
+    return None
+  if not epath.Path(path).exists():
+    raise ValueError(f'--restart_from={path} does not exist.')
+  return path
+
+
 def main(_):
   params = _make_params()
+  restart_from = _check_restart_path()
 
   simulation = fire.Fire(params)
   params.source_update_fn_lib = simulation.source_term_update_fn()
   params.additional_states_update_fn = simulation.additional_states_update_fn
   params.preprocessing_states_update_fn = simulation.pre_simulation_update_fn
+
+  if restart_from is not None:
+    logging.info(
+        'Resuming from %s; %d step(s) will be run on top of its step.',
+        restart_from,
+        FLAGS.num_cycles * FLAGS.num_steps,
+    )
 
   # Run the simulation using the JAX driver.
   driver_lib.run_simulation(
@@ -64,6 +110,8 @@ def main(_):
       num_steps_per_cycle=FLAGS.num_steps,
       checkpoint_dir=FLAGS.checkpoint_dir,
       checkpoint_interval=FLAGS.checkpoint_interval,
+      restart_from=restart_from,
+      restart_step=_RESTART_STEP.value,
   )
 
 
