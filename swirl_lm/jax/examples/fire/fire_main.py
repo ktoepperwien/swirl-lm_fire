@@ -52,6 +52,14 @@ _RESTART_STEP = flags.DEFINE_integer(
     'deliberately, or to resume a checkpoint written before the step was '
     'recorded in its metadata.',
 )
+_LOG_POISSON_RESIDUAL = flags.DEFINE_bool(
+    'log_poisson_residual',
+    False,
+    'Report the pressure solve\'s relative residual, ||A dp - b|| / ||b||, '
+    'once per sub-iteration. Off by default: the switch is read while tracing, '
+    'so when it is unset neither the extra operator application nor the host '
+    'callback that prints it enters the compiled graph.',
+)
 _RESTART_FIELDS = flags.DEFINE_list(
     'restart_fields',
     None,
@@ -135,6 +143,8 @@ def _restart_fields(
 def main(_):
   params = _make_params()
   restart_from = _check_restart_path()
+
+  params.log_poisson_residual = _LOG_POISSON_RESIDUAL.value
 
   simulation = fire.Fire(params)
   params.source_update_fn_lib = simulation.source_term_update_fn()
