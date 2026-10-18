@@ -665,6 +665,18 @@ class Pressure:
         bc_dp_list.append((lo, hi))  # pyrefly: ignore[bad-argument-type]
     return tuple(bc_dp_list)  # pyrefly: ignore[bad-return-type]
 
+  def _max_iterations(self) -> int:
+    """The iteration limit the configured solver was given.
+
+    Returns:
+      The limit, or 0 if the selected solver does not declare one.
+    """
+    selected = self._solver_option.WhichOneof('solver')
+    if selected is None:
+      return 0
+    option = getattr(self._solver_option, selected)
+    return getattr(option, 'max_iterations', 0)
+
   def _report_poisson_residual(
       self,
       dp: ScalarField,
@@ -672,6 +684,7 @@ class Pressure:
       mesh: jax.sharding.Mesh,
       halo_update_fn: Callable[[ScalarField], ScalarField],
       singular: bool,
+      iterations: jax.Array | None = None,
   ) -> None:
     """Prints the relative L2 residual of the pressure solve.
 
@@ -695,6 +708,7 @@ class Pressure:
       singular: Whether the problem is all-Neumann, in which case the mean is
         removed from `b` before measuring, since a singular operator cannot
         resolve a constant shift.
+      iterations: How many iterations the solve took, when it reports that.
     """
     halo_width = self._grid_params.halo_width
     norms, _ = self._solver.compute_residual(
@@ -714,13 +728,28 @@ class Pressure:
     # `compute_norm` returns shape-(1,) arrays; a format spec needs a scalar.
     residual_norm = jnp.squeeze(norms['L2'])
     rhs_norm = jnp.squeeze(b_norm)
-    jax.debug.print(
-        'Poisson residual: relative={relative:.3e} absolute={absolute:.3e} '
-        'rhs={rhs:.3e}',
-        relative=residual_norm / jnp.where(rhs_norm > 0.0, rhs_norm, 1.0),
-        absolute=residual_norm,
-        rhs=rhs_norm,
-    )
+    relative = residual_norm / jnp.where(rhs_norm > 0.0, rhs_norm, 1.0)
+    if iterations is None:
+      jax.debug.print(
+          'Poisson residual: relative={relative:.3e} absolute={absolute:.3e} '
+          'rhs={rhs:.3e}',
+          relative=relative,
+          absolute=residual_norm,
+          rhs=rhs_norm,
+      )
+    else:
+      limit = self._max_iterations()
+      jax.debug.print(
+          'Poisson residual: relative={relative:.3e} absolute={absolute:.3e} '
+          'rhs={rhs:.3e} iterations={iterations}/{limit}'
+          ' at_limit={at_limit}',
+          relative=relative,
+          absolute=residual_norm,
+          rhs=rhs_norm,
+          iterations=iterations,
+          limit=limit,
+          at_limit=iterations >= limit,
+      )
 
   def _dp_halo_update_fn(
       self,
@@ -886,7 +915,12 @@ class Pressure:
 
     if self._params.log_poisson_residual:
       self._report_poisson_residual(
-          dp, b, mesh, halo_update_fn, singular=not has_dirichlet_bc
+          dp,
+          b,
+          mesh,
+          halo_update_fn,
+          singular=not has_dirichlet_bc,
+          iterations=poisson_solution.get(base_poisson_solver.ITERATIONS),
       )
 
     return {
