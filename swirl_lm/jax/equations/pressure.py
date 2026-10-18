@@ -673,11 +673,6 @@ class Pressure:
     residual, and `b` is zeroed here to match, so each cell counts once even
     though neighbouring replicas hold copies of each other's edge cells.
 
-    The solvers already return a `residual_l2_norm`, but it is not usable as
-    evidence: Jacobi performs a fixed number of sweeps and reports only the
-    solution and that count. Applying the operator once more is cheap beside
-    ten or more sweeps.
-
     Called only when `params.log_poisson_residual` is set. The line is emitted
     by every replica, carrying the same globally reduced value, because an
     `axis_index` predicate around a debug callback is not supported under SPMD
@@ -688,8 +683,7 @@ class Pressure:
       b: The right hand side it was given.
       mesh: The device mesh.
       halo_update_fn: The boundary conditions `dp` was solved against. Passing
-        this matters: without it the residual would be measured against
-        homogeneous Neumann, which is not what every case uses.
+        this for cases whose boundary conditions are not all Neumann. 
       singular: Whether the problem is all-Neumann, in which case the mean is
         removed from `b` before measuring, since a singular operator cannot
         resolve a constant shift.

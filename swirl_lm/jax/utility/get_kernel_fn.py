@@ -199,9 +199,7 @@ COEFFS = {
 #     out[i] = sum_j coeffs[j] * array[i + j - offset].
 #
 # The convolution backend consumes this directly; the slice backend converts it
-# with `_to_slice_stencil`. Two independently hand-written tables are what let
-# `kf2+` and `k3d1+` drift away from their convolution twins, `kf2+` mirrored
-# and `k3d1+` displaced by a whole cell, with nothing to catch either.
+# with `_to_slice_stencil`.
 _BUILTIN_STENCILS: dict[str, tuple[list[float], int]] = {
     'kS': (COEFFS['centered_sum'], 1),
     'ks': (COEFFS['backward_sum'], 1),
