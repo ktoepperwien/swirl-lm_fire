@@ -162,6 +162,18 @@ class Pressure:
           _DEFAULT_SOLVER_PARAMS, poisson_solver_pb2.PoissonSolver()
       )
 
+    self._bc = dict(params.bc)
+
+    # Conjugate gradient reprojects onto the range of the operator by removing
+    # the mean, which is right for an all-Neumann problem, whose null space is
+    # the constant, and wrong for one with a Dirichlet face, where the mean is
+    # part of the solution. Determine from the boundary conditions whether to
+    # subtract mean, unless explicitly configured otherwise.
+    if self._solver_option.HasField('conjugate_gradient'):
+      cg_option = self._solver_option.conjugate_gradient
+      if not cg_option.HasField('reprojection'):
+        cg_option.reprojection = not self._has_dirichlet_pressure_bc()
+
     self._solver = poisson_solver.poisson_solver_factory(
         self._grid_params,
         self._kernel_op,
@@ -169,7 +181,6 @@ class Pressure:
         use_stretched_grid=tuple(params.use_stretched_grid),
     )
     self._num_d_rho_filter = num_d_rho_filter
-    self._bc = dict(params.bc)
 
     # Pre-register filter kernels used by drho filtering so that
     # jax.lax.fori_loop in the step can call filter_op without triggering
@@ -585,6 +596,31 @@ class Pressure:
 
     return correction
 
+  def _has_dirichlet_pressure_bc(self) -> bool:
+    """Whether any non-periodic face carries a Dirichlet condition on `p`.
+
+    Determines whether the Poisson operator is singular. With every
+    non-periodic face set to Neumann, the constant is in its null space, so the
+    solution is only determined up to a constant. One Dirichlet face pins it.
+
+    Returns:
+      True if at least one non-periodic face has a Dirichlet condition on `p`.
+    """
+    periodic = list(self._grid_params.to_xyz_order(self._params.periodic_dims))  # pyrefly: ignore[bad-argument-type]
+    bc_p = self._bc.get('p')
+    if bc_p is None:
+      return False
+    return any(
+        not periodic[dim]
+        and bc_p[dim] is not None  # pyrefly: ignore[unsupported-operation]
+        and any(
+            bc_p[dim][face] is not None  # pyrefly: ignore[unsupported-operation]
+            and bc_p[dim][face][0] == halo_exchange_utils.BCType.DIRICHLET  # pyrefly: ignore[unsupported-operation]
+            for face in range(2)
+        )
+        for dim in range(3)
+    )
+
   def _build_dp_bc(
       self,
   ) -> halo_exchange_utils.BoundaryConditionsSpec:
@@ -839,18 +875,7 @@ class Pressure:
     dp: ScalarField = jnp.asarray(poisson_solution[base_poisson_solver.X])
 
     # Remove global mean for all-Neumann problems (no Dirichlet BC).
-    has_dirichlet_bc = any(
-        not periodic[dim]
-        and self._bc.get('p') is not None
-        and self._bc['p'] is not None
-        and self._bc['p'][dim] is not None  # pyrefly: ignore[unsupported-operation]
-        and any(
-            self._bc['p'][dim][face] is not None  # pyrefly: ignore[unsupported-operation]
-            and self._bc['p'][dim][face][0] == halo_exchange_utils.BCType.DIRICHLET  # pyrefly: ignore[unsupported-operation]
-            for face in range(2)
-        )
-        for dim in range(3)
-    )
+    has_dirichlet_bc = self._has_dirichlet_pressure_bc()
 
     if not has_dirichlet_bc:
       dp = dp - common_ops.global_mean(
