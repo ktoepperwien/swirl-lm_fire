@@ -46,9 +46,11 @@ from typing import Callable, Optional, TypeAlias
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from swirl_lm.jax.communication import halo_exchange as halo_ex
 from swirl_lm.jax.linalg import base_poisson_solver
 from swirl_lm.jax.utility import common_ops
+from swirl_lm.jax.utility import get_kernel_fn
 from swirl_lm.jax.utility import types
 
 ScalarField: TypeAlias = types.ScalarField
@@ -264,6 +266,129 @@ class ConjugateGradientSolver(base_poisson_solver.PoissonSolver):
     super().__init__(grid_params, kernel_op, solver_option)
     self._cg_option = solver_option.conjugate_gradient
 
+  def _band_preconditioner(
+      self,
+      halo_update_fn: Callable[[ScalarField], ScalarField],
+  ) -> Callable[[ScalarField], ScalarField]:
+    """Builds the band preconditioner the configuration asks for.
+
+    Ported from the TensorFlow implementation in
+    `swirl_lm/linalg/poisson_solver.py`. The construction is adapted such
+    that it can be applied as a single convolution.
+
+    Let `A_d` be the one-dimensional Laplacian along the direction with the
+    smallest grid spacing, and `x` a symmetric band approximation of its
+    inverse. The preconditioner is then
+
+        M^-1 = x (1 - O + O^2 - O^3 + ...),   O = (A_j + A_k) x,
+
+    with `j` and `k` the remaining two directions, truncated at
+    `taylor_expansion_order`. With no expansion it degenerates to `x` applied
+    along the dominating direction alone, or, with `symmetric` set, to the sum
+    of `x` applied along all three.
+
+    Args:
+      halo_update_fn: The boundary conditions the system is solved against.
+
+    Returns:
+      A callable applying `M^-1`.
+
+    Raises:
+      ValueError: If the coefficients are not an odd-length, non-trivial
+        stencil that fits inside the halos, or if `dominating_direction` is
+        not an axis index.
+    """
+    config = self._cg_option.preconditioner.band_preconditioner
+    coefficients = list(config.coefficients)
+    halo_width = self._grid_params.halo_width
+
+    # The same constraints the TensorFlow implementation validates, checked
+    # here rather than in a separate validator so a bad configuration fails
+    # where it is used.
+    if len(coefficients) % 2 == 0:
+      raise ValueError(
+          'The band preconditioner needs an odd number of coefficients so '
+          f'that it is centred; got {len(coefficients)}.'
+      )
+    if len(coefficients) // 2 > halo_width:
+      raise ValueError(
+          f'The band preconditioner reaches {len(coefficients) // 2} cells, '
+          f'further than the halo width of {halo_width}.'
+      )
+    if sum(abs(c) for c in coefficients) < 1e-6:
+      raise ValueError('The band preconditioner coefficients are all zero.')
+
+    axes = ('x', 'y', 'z')
+    spacings = self._grid_params.to_xyz_order(self._grid_params.grid_spacings)
+
+    if config.HasField('dominating_direction'):
+      dominating = config.dominating_direction
+      if dominating not in (0, 1, 2):
+        raise ValueError(
+            f'dominating_direction must be 0, 1 or 2; got {dominating}.'
+        )
+    else:
+      dominating = int(np.argmin(spacings))
+
+    # Only meaningful when one direction really does dominate: the expansion
+    # is in `O`, whose size is set by how much coarser the other two are.
+    if config.HasField('dominating_grid_spacing_gap') and spacings[
+        dominating
+    ] >= sorted(spacings)[1] + config.dominating_grid_spacing_gap:
+      raise ValueError(
+          'The band preconditioner expands about a dominating direction, but '
+          f'the grid spacings {tuple(spacings)} have no clear minimum within '
+          f'{config.dominating_grid_spacing_gap}.'
+      )
+
+    kernel_op = get_kernel_fn.ApplyKernelConvOp(
+        self._grid_params.kernel_size,
+        self._grid_params,
+        {'band': (coefficients, len(coefficients) // 2)},
+    )
+
+    def band(f: ScalarField, indices) -> list[ScalarField]:
+      """Applies `x` along each requested axis, scaled by that spacing."""
+      return [
+          spacings[i] ** 2 * kernel_op.apply_kernel_op(f, 'band', axes[i])
+          for i in indices
+      ]
+
+    def o_operator(f: ScalarField) -> ScalarField:
+      """`O f`, the cross-direction Laplacian of the banded field."""
+      banded = band(halo_update_fn(f), [dominating])[0]
+      others = [axes[i] for i in range(3) if i != dominating]
+      terms = self._laplacian_terms(banded, halo_update=None, axes=others)
+      return sum(terms.values())  # pytype: disable=bad-return-type
+
+    order = config.taylor_expansion_order
+
+    def preconditioner(f: ScalarField) -> ScalarField:
+      # The halos have to be filled before the band filter reads them;
+      # without this the operator is not even symmetric, which conjugate
+      # gradient cannot survive.
+      f = halo_update_fn(f)
+
+      if order < 1:
+        if config.symmetric:
+          return sum(band(f, (0, 1, 2)))  # pytype: disable=bad-return-type
+        return band(f, [dominating])[0]
+
+      # Accumulate `f - O f + O^2 f - ...`, smallest terms first, since the
+      # powers shrink and adding them in that order loses less.
+      powers = []
+      current = f
+      for _ in range(order):
+        current = o_operator(current if not powers else halo_update_fn(current))
+        powers.append(current)
+      total = jnp.zeros_like(f)
+      for power_index in range(len(powers) - 1, -1, -1):
+        sign = -1.0 if power_index % 2 == 0 else 1.0
+        total = total + sign * powers[power_index]
+      return band(halo_update_fn(total + f), [dominating])[0]
+
+    return preconditioner
+
   def solve(
       self,
       rhs: ScalarField,
@@ -333,6 +458,12 @@ class ConjugateGradientSolver(base_poisson_solver.PoissonSolver):
         distance = jnp.abs(diff) - tol_field
         return jax.lax.pmax(jnp.max(distance), axis_name=mesh.axis_names)
 
+    preconditioner_fn = None
+    if self._cg_option.HasField(
+        'preconditioner'
+    ) and self._cg_option.preconditioner.HasField('band_preconditioner'):
+      preconditioner_fn = self._band_preconditioner(halo_update_fn)
+
     # Clear halos on rhs for the solver.
     rhs_cleared = halo_ex.set_halos_to_zero(rhs, hw, self._grid_params)
 
@@ -350,6 +481,7 @@ class ConjugateGradientSolver(base_poisson_solver.PoissonSolver):
         l2_norm_reduction=self._cg_option.l2_norm_reduction,
         component_wise_distance_fn=cw_distance_fn,
         reprojection=reprojection_fn,
+        preconditioner=preconditioner_fn,
     )
 
   def residual(
