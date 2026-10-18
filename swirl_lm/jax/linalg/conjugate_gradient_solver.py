@@ -282,13 +282,22 @@ class ConjugateGradientSolver(base_poisson_solver.PoissonSolver):
 
     dot = functools.partial(common_ops.global_dot, mesh=mesh)
 
-    # Reprojection: subtract mean to handle singular systems.
+    # Reprojection: subtract the mean, to handle a singular operator whose
+    # null space is the constant. Only meaningful when the operator really is
+    # singular (i.e., all Neumann boundary conditions). On a problem with a
+    # Dirichlet face the mean belongs to the solution and must not be removed.
     reprojection_fn = None
     if self._cg_option.reprojection:
 
       def reprojection_fn(v: ScalarField) -> ScalarField:  # pylint: disable=function-redefined
+        # The halos must be put back to zero. Every vector in the iteration
+        # carries zeroed halos, which is what makes `global_dot` an
+        # interior-only inner product despite summing the whole local array;
+        # subtracting a scalar would leave `-mean` in the halos and corrupt
+        # every inner product, and with them `alpha`, `beta` and the
+        # convergence test.
         mean = common_ops.global_mean(v, mesh, hw, hw, hw, self._grid_params)
-        return v - mean
+        return halo_ex.set_halos_to_zero(v - mean, hw, self._grid_params)
 
     # Componentwise convergence check.
     cw_distance_fn = None
