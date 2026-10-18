@@ -164,16 +164,6 @@ class Pressure:
 
     self._bc = dict(params.bc)
 
-    # Conjugate gradient reprojects onto the range of the operator by removing
-    # the mean, which is right for an all-Neumann problem, whose null space is
-    # the constant, and wrong for one with a Dirichlet face, where the mean is
-    # part of the solution. Determine from the boundary conditions whether to
-    # subtract mean, unless explicitly configured otherwise.
-    if self._solver_option.HasField('conjugate_gradient'):
-      cg_option = self._solver_option.conjugate_gradient
-      if not cg_option.HasField('reprojection'):
-        cg_option.reprojection = not self._has_dirichlet_pressure_bc()
-
     self._solver = poisson_solver.poisson_solver_factory(
         self._grid_params,
         self._kernel_op,
@@ -194,6 +184,24 @@ class Pressure:
 
     # Set the initial flow-dependent pressure BCs.
     self._update_pressure_bc()
+
+    # Conjugate gradient reprojects onto the range of the operator by removing
+    # the mean, which is right for an all-Neumann problem, whose null space is
+    # the constant, and wrong for one with a Dirichlet face, where the mean is
+    # part of the solution. Determine from the boundary conditions whether to
+    # subtract mean, unless explicitly configured otherwise.
+    #
+    # Decision needs to be made after `_update_pressure_bc`, which turns
+    # `pressure_outlet` into the Dirichlet face that makes the operator
+    # non-singular. Deciding before it reads the boundary conditions as
+    # configured rather than as they end up (i.e., flow-dependent), and every
+    # case that pins its outlet would reproject when it must not. The solver
+    # holds the option message by reference and reads `reprojection` when it
+    # solves, so settling it here still reaches it.
+    if self._solver_option.HasField('conjugate_gradient'):
+      cg_option = self._solver_option.conjugate_gradient
+      if not cg_option.HasField('reprojection'):
+        cg_option.reprojection = not self._has_dirichlet_pressure_bc()
 
   def _update_pressure_bc(self) -> None:
     """Updates the boundary condition of pressure based on the flow type.
@@ -683,7 +691,7 @@ class Pressure:
       b: The right hand side it was given.
       mesh: The device mesh.
       halo_update_fn: The boundary conditions `dp` was solved against. Passing
-        this for cases whose boundary conditions are not all Neumann. 
+        this for cases whose boundary conditions are not all Neumann.
       singular: Whether the problem is all-Neumann, in which case the mean is
         removed from `b` before measuring, since a singular operator cannot
         resolve a constant shift.
