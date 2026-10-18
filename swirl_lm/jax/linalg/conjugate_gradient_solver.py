@@ -59,6 +59,16 @@ RESIDUAL_L2_NORM = base_poisson_solver.RESIDUAL_L2_NORM
 COMPONENT_WISE_DISTANCE = base_poisson_solver.COMPONENT_WISE_DISTANCE
 ITERATIONS = base_poisson_solver.ITERATIONS
 
+# How often to recompute the residual from its definition rather than from the
+# recursion `r <- r - alpha A d`. The recursion drifts in finite precision,
+# especially in float32: measured against a manufactured solution, asking
+# for a relative residual of 1e-10 on a 64^3 grid had the recursive estimate
+# reach 8.5e-11 while the true residual was at 1.5e-4.
+# Discrepancy grows with the grid size. True residual needs to be recomputed at
+# the cost of one extra operator application per interval. The interval has to
+# be shorter than a typical solve.
+_RESIDUAL_RESTART_INTERVAL = 20
+
 # Type aliases for the linear operator and dot product callables.
 LinearOp = Callable[[ScalarField], ScalarField]
 DotFn = Callable[[ScalarField, ScalarField], jax.Array]
@@ -181,6 +191,16 @@ def conjugate_gradient_solver(
     # Update solution and residual.
     x_next = x + alpha * d
     r_next = r - alpha * a_d
+
+    # Periodically recompute the residual from its definition. Without this
+    # the iteration stops on an estimate that no longer reflects the true
+    # residual, reporting successful convergence while the solution is far from
+    # solving the system.
+    r_next = jax.lax.cond(
+        (i + 1) % _RESIDUAL_RESTART_INTERVAL == 0,
+        lambda: b - linear_operator(x_next),
+        lambda: r_next,
+    )
 
     if reprojection:
       x_next = reprojection(x_next)
