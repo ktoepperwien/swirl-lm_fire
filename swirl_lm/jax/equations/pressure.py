@@ -40,6 +40,7 @@ added as separate methods when those physics modules are ported.
 """
 
 
+from collections.abc import Callable
 import functools
 
 from google.protobuf import text_format
@@ -620,6 +621,69 @@ class Pressure:
         bc_dp_list.append((lo, hi))
     return tuple(bc_dp_list)
 
+  def _report_poisson_residual(
+      self,
+      dp: ScalarField,
+      b: ScalarField,
+      mesh: jax.sharding.Mesh,
+      halo_update_fn: Callable[[ScalarField], ScalarField],
+      singular: bool,
+  ) -> None:
+    """Prints the relative L2 residual of the pressure solve.
+
+    Reports `||A dp - b|| / ||b||` rather than the absolute residual, so the
+    number is comparable across cases and across grid refinements. The norms
+    are taken over the interior: `compute_residual` zeroes the halos of the
+    residual, and `b` is zeroed here to match, so each cell counts once even
+    though neighbouring replicas hold copies of each other's edge cells.
+
+    The solvers already return a `residual_l2_norm`, but it is not usable as
+    evidence: Jacobi performs a fixed number of sweeps and reports only the
+    solution and that count. Applying the operator once more is cheap beside
+    ten or more sweeps.
+
+    Called only when `params.log_poisson_residual` is set. The line is emitted
+    by every replica, carrying the same globally reduced value, because an
+    `axis_index` predicate around a debug callback is not supported under SPMD
+    partitioning.
+
+    Args:
+      dp: The pressure correction the solver returned.
+      b: The right hand side it was given.
+      mesh: The device mesh.
+      halo_update_fn: The boundary conditions `dp` was solved against. Passing
+        this matters: without it the residual would be measured against
+        homogeneous Neumann, which is not what every case uses.
+      singular: Whether the problem is all-Neumann, in which case the mean is
+        removed from `b` before measuring, since a singular operator cannot
+        resolve a constant shift.
+    """
+    halo_width = self._grid_params.halo_width
+    norms, _ = self._solver.compute_residual(
+        mesh,
+        dp,
+        b,
+        norm_types=(common_ops.NormType.L2,),
+        halo_update_fn=halo_update_fn,
+        remove_mean_from_rhs=singular,
+    )
+    b_interior = halo_exchange.set_halos_to_zero(
+        b, halo_width, self._grid_params
+    )
+    b_norm = common_ops.compute_norm(
+        b_interior, {common_ops.NormType.L2}, mesh
+    )['L2']
+    # `compute_norm` returns shape-(1,) arrays; a format spec needs a scalar.
+    residual_norm = jnp.squeeze(norms['L2'])
+    rhs_norm = jnp.squeeze(b_norm)
+    jax.debug.print(
+        'Poisson residual: relative={relative:.3e} absolute={absolute:.3e} '
+        'rhs={rhs:.3e}',
+        relative=residual_norm / jnp.where(rhs_norm > 0.0, rhs_norm, 1.0),
+        absolute=residual_norm,
+        rhs=rhs_norm,
+    )
+
   def _dp_halo_update_fn(
       self,
       dp: ScalarField,
@@ -791,6 +855,11 @@ class Pressure:
     if not has_dirichlet_bc:
       dp = dp - common_ops.global_mean(
           dp, mesh, halo_width, halo_width, halo_width, self._grid_params
+      )
+
+    if self._params.log_poisson_residual:
+      self._report_poisson_residual(
+          dp, b, mesh, halo_update_fn, singular=not has_dirichlet_bc
       )
 
     return {
