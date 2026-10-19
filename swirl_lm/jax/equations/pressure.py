@@ -751,6 +751,86 @@ class Pressure:
           at_limit=iterations >= limit,
       )
 
+  def _report_continuity_residual(
+      self,
+      states: ScalarFieldMap,
+      states_0: ScalarFieldMap,
+      dp: ScalarField,
+      divergence_term: ScalarField,
+      mesh: jax.sharding.Mesh,
+      additional_states: ScalarFieldMap,
+  ) -> None:
+    """Prints the divergence immediately before and after the correction.
+
+    The Poisson residual tells how well the linear system was solved. It does
+    not tell whether the correction removed any divergence.
+    The solver inverts the compact `kdd` Laplacian while
+    `velocity.correction_step` reaches the divergence through
+    `deriv_centered` twice, and the two differ most on the odd-even mode. This
+    replicates the correction and measures what it achieved.
+
+    Reports `||div(rho u)||` before, `||div(rho u_corrected)||` after, and
+    their ratio. A ratio near zero means the projection worked; a ratio near or
+    above one means it did not.
+
+    Called only when `params.log_poisson_residual` is set. The correction is
+    recomputed rather than shared with `correction_step`, so this must stay in
+    step with `velocity.correction_step` if that changes.
+
+    Args:
+      states: Flow field variables from the latest prediction.
+      states_0: Flow field variables from the previous time step.
+      dp: The pressure correction the solver returned.
+      divergence_term: `div(rho u) / dt` as the right hand side used it.
+      mesh: The device mesh.
+      additional_states: Helper variables, for the stretched-grid factors.
+    """
+    dt = self._params.dt
+    halo_width = self._grid_params.halo_width
+    anelastic = (
+        self._params.solver_mode == thermodynamics_pb2.Thermodynamics.ANELASTIC
+    )
+    rho_mid = (
+        states['rho']
+        if anelastic
+        else 0.5 * (states['rho'] + states_0['rho'])
+    )
+
+    corrected = {}
+    for key, axis in zip(('rho_u', 'rho_v', 'rho_w'), ('x', 'y', 'z')):
+      grad_dp = self._deriv_lib.deriv_centered(dp, axis, additional_states)
+      if anelastic:
+        corrected[key] = states[key] - dt * rho_mid * grad_dp
+      else:
+        corrected[key] = states[key] - dt * grad_dp
+
+    divergence_after = self._compute_divergence_term(
+        corrected['rho_u'],
+        corrected['rho_v'],
+        corrected['rho_w'],
+        dt,
+        additional_states,
+    )
+
+    def norm(field: ScalarField) -> jax.Array:
+      interior = halo_exchange.set_halos_to_zero(
+          field, halo_width, self._grid_params
+      )
+      return jnp.squeeze(
+          common_ops.compute_norm(interior, {common_ops.NormType.L2}, mesh)[
+              'L2'
+          ]
+      )
+
+    before = norm(divergence_term)
+    after = norm(divergence_after)
+    jax.debug.print(
+        'Continuity: before={before:.3e} after={after:.3e} ratio={ratio:.3e}',
+        before=before,
+        after=after,
+        ratio=after / jnp.where(before > 0.0, before, 1.0),
+    )
+
   def _dp_halo_update_fn(
       self,
       dp: ScalarField,
@@ -921,6 +1001,14 @@ class Pressure:
           halo_update_fn,
           singular=not has_dirichlet_bc,
           iterations=poisson_solution.get(base_poisson_solver.ITERATIONS),
+      )
+      self._report_continuity_residual(
+          states,
+          states_0,
+          dp,
+          divergence_term,
+          mesh,
+          additional_states,
       )
 
     return {
