@@ -80,6 +80,23 @@ _KEY_RHO_W = common.KEY_RHO_W
 _COORDINATE_ALIASES = {'dim_0': 'dim_x', 'dim_1': 'dim_y', 'dim_2': 'dim_z'}
 
 
+def _is_repeated(descriptor) -> bool:
+  """Whether `descriptor` describes a repeated field.
+
+  Protobuf replaced `label` and `LABEL_REPEATED` with `is_repeated`. Implemented
+  this function for backward compatibility.
+
+  Args:
+    descriptor: A protobuf field descriptor.
+
+  Returns:
+    True if the field is repeated.
+  """
+  if hasattr(descriptor, 'is_repeated'):
+    return descriptor.is_repeated
+  return descriptor.label == descriptor.LABEL_REPEATED
+
+
 def _copy_set_fields(source, target) -> None:
   """Copies every field explicitly set on `source` onto `target`, by name.
 
@@ -99,14 +116,14 @@ def _copy_set_fields(source, target) -> None:
         continue
 
     if descriptor.type == descriptor.TYPE_MESSAGE:
-      if descriptor.label == descriptor.LABEL_REPEATED:
+      if _is_repeated(descriptor):
         for element in value:
           _copy_set_fields(element, getattr(target, name).add())
       else:
         nested = getattr(target, name)
         nested.SetInParent()
         _copy_set_fields(value, nested)
-    elif descriptor.label == descriptor.LABEL_REPEATED:
+    elif _is_repeated(descriptor):
       getattr(target, name).extend(value)
     else:
       setattr(target, name, value)
