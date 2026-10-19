@@ -757,10 +757,11 @@ class Pressure:
       states_0: ScalarFieldMap,
       dp: ScalarField,
       divergence_term: ScalarField,
+      physical_rhs: ScalarField,
       mesh: jax.sharding.Mesh,
       additional_states: ScalarFieldMap,
   ) -> None:
-    """Prints the divergence immediately before and after the correction.
+    """Prints how far the corrected momentum is from satisfying continuity.
 
     The Poisson residual tells how well the linear system was solved. It does
     not tell whether the correction removed any divergence.
@@ -769,9 +770,15 @@ class Pressure:
     `deriv_centered` twice, and the two differ most on the odd-even mode. This
     replicates the correction and measures what it achieved.
 
-    Reports `||div(rho u)||` before, `||div(rho u_corrected)||` after, and
-    their ratio. A ratio near zero means the projection worked; a ratio near or
-    above one means it did not.
+    The target may not always be zero divergence. At low Mach number continuity
+    reads `div(rho u) = -drho/dt + src_rho`. With combustion, the
+    corrected momentum should carry a large divergence, and comparing
+    `||div(rho u)||` before and after would be misleading.
+    Reported instead is the residual of that equation,
+    `||div(rho u)/dt - rhs_phys||`, where `rhs_phys` is the right hand side
+    without the numerical consistency term, measured before and after the
+    correction. For a constant-density case with no mass source `rhs_phys`
+    is the divergence term, so the two formulations coincide.
 
     Called only when `params.log_poisson_residual` is set. The correction is
     recomputed rather than shared with `correction_step`, so this must stay in
@@ -782,6 +789,8 @@ class Pressure:
       states_0: Flow field variables from the previous time step.
       dp: The pressure correction the solver returned.
       divergence_term: `div(rho u) / dt` as the right hand side used it.
+      physical_rhs: The right hand side without the numerical consistency
+        term, which is what continuity asks `div(rho u) / dt` to equal.
       mesh: The device mesh.
       additional_states: Helper variables, for the stretched-grid factors.
     """
@@ -822,8 +831,13 @@ class Pressure:
           ]
       )
 
-    before = norm(divergence_term)
-    after = norm(divergence_after)
+    # Continuity requires `div(rho u)/dt = rhs_phys` once the correction is
+    # applied, so with `dp = 0` the residual is `rhs_phys` itself, and after
+    # the correction it is `rhs_phys` less what the correction removed. For a
+    # constant-density case with no mass source `rhs_phys` is the divergence
+    # term and these reduce to the divergence before and after.
+    before = norm(physical_rhs)
+    after = norm(physical_rhs - (divergence_term - divergence_after))
     jax.debug.print(
         'Continuity: before={before:.3e} after={after:.3e} ratio={ratio:.3e}',
         before=before,
@@ -1007,6 +1021,7 @@ class Pressure:
           states_0,
           dp,
           divergence_term,
+          b - numerical_consistency,
           mesh,
           additional_states,
       )
