@@ -11,7 +11,7 @@
 # and that work is deliberately not on this branch.
 #
 # Run with --log_poisson_residual to see what the solve achieves. The line
-# reports `iterations=N/30 at_limit=...`, which distinguishes a solve that
+# reports `iterations=N/200 at_limit=...`, which distinguishes a solve that
 # converged from one that merely stopped.
 #
 # Two defects in the TensorFlow-to-JAX solver conversion made the earlier
@@ -82,15 +82,7 @@ gravity_direction {
 pressure {
   solver {
     conjugate_gradient {
-      # Thirty, not two hundred. The relative tolerance below sits under the
-      # float32 floor for this grid, about 1.5e-3 at 128 cubed, so the solve
-      # can never meet it and runs to the limit every time. Conjugate
-      # gradient reaches that floor in a handful of iterations -- two to five
-      # for 1e-3 on a manufactured problem at 32 and 64 cubed -- so thirty
-      # buys essentially the same residual at a sixth of the cost, and each
-      # iteration costs an operator application plus two global dot products,
-      # which are two device synchronisations.
-      max_iterations: 30
+      max_iterations: 200
       halo_width: 2
       # Relative, not absolute. `atol` is absolute by default, and the norm of
       # the right hand side scales with the mesh and the flow, so one fixed
