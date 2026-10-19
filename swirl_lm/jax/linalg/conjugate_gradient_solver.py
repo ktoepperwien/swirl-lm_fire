@@ -471,7 +471,7 @@ class ConjugateGradientSolver(base_poisson_solver.PoissonSolver):
     if reprojection_fn is not None:
       rhs_cleared = reprojection_fn(rhs_cleared)
 
-    return conjugate_gradient_solver(
+    solution = conjugate_gradient_solver(
         linear_operator=linear_op,
         dot=dot,
         b=rhs_cleared,
@@ -483,6 +483,14 @@ class ConjugateGradientSolver(base_poisson_solver.PoissonSolver):
         reprojection=reprojection_fn,
         preconditioner=preconditioner_fn,
     )
+
+    # Hand back a solution whose halos satisfy the boundary conditions, which
+    # is assumed by every caller of `X`. `velocity.correction_step` then takes a
+    # centred difference of it which should see a gradient at each halo
+    # interface instead of a one-sided jump.
+    # `ThreeWeight` and `FastDiagonalization` already return an updated halo.
+    solution[X] = halo_update_fn(solution[X])
+    return solution
 
   def residual(
       self,
