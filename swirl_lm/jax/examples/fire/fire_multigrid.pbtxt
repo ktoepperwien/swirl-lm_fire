@@ -101,12 +101,11 @@ pressure {
       n_smooth: 2
       weight: 0.6667
       n_coarse: 1
-      # 128 halves to 4 in six levels, which is as deep as the hierarchy
-      # needs to go: below that the coarse problem is small enough that
-      # extra smoothing settles it.
-      # `swirl_lm.CoordinateInt` numbers its fields; the JAX proto of the
-      # same name spells them dim_x, dim_y, dim_z.
-      coarsest_subgrid_shape { dim_0: 4 dim_1: 4 dim_2: 4 }
+      # Stop at 8, not 4. The Galerkin coarse operator spans five points per
+      # axis, so four cells cannot hold it and the cycle diverges: measured
+      # on a 128 cubed manufactured problem, 1.8e+09 after eight cycles
+      # against 1.99e-04 stopping at eight. 128 halves to 8 in four levels.
+      coarsest_subgrid_shape { dim_0: 8 dim_1: 8 dim_2: 8 }
     }
   }
   num_d_rho_filter: 3
