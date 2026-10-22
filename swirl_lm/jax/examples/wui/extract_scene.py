@@ -1357,17 +1357,26 @@ def write_overlay(
     voxels: Voxels,
     boxes: dict[str, np.ndarray],
     crop: tuple[float, float, float, float],
+    span: tuple[float, float] | None = None,
 ) -> None:
   """Draws the fitted boxes over the building footprint.
 
   The fitting is the step where a quiet error costs a whole simulation, and
   the numbers in the report do not show a box in the wrong place. Look at it.
 
+  The voxels are an input and are never transformed, while the boxes are
+  written in the solver frame, so after a half turn the two disagree unless
+  the footprint is turned to match. Without `span` the boxes come out rotated
+  against an upright background, which reads as a fitting error and is not
+  one.
+
   Args:
     path: PNG to write.
     voxels: The voxel classification.
     boxes: The fitted boxes.
     crop: `(west, south, east, north)` in UTM.
+    span: `(lx, ly)` of the solver frame when the scene was turned half a
+      turn, or `None` when it was not. The same reflection the scene got.
   """
   import matplotlib  # pylint: disable=g-import-not-at-top
   matplotlib.use('Agg')
@@ -1380,7 +1389,12 @@ def write_overlay(
   keep = building & (x >= west) & (x < east) & (y >= south) & (y < north)
 
   figure, axes = plt.subplots(figsize=(11, 11 * (north - south) / (east - west)))
-  axes.scatter(x[keep] - west, y[keep] - south, s=0.2, c='0.6',
+  footprint_x = x[keep] - west
+  footprint_y = y[keep] - south
+  if span is not None:
+    footprint_x = span[0] - footprint_x
+    footprint_y = span[1] - footprint_y
+  axes.scatter(footprint_x, footprint_y, s=0.2, c='0.6',
                linewidths=0, label='building voxels')
   for centre, half, rotation in zip(boxes['box_centres'],
                                     boxes['box_half_extents'],
@@ -1399,7 +1413,10 @@ def write_overlay(
   axes.set_aspect('equal')
   axes.set_xlabel('east of the domain corner (m)')
   axes.set_ylabel('north of the domain corner (m)')
-  axes.set_title('fitted building boxes over the voxel footprint')
+  axes.set_title(
+      'fitted building boxes over the voxel footprint'
+      + (' (turned half a turn)' if span is not None else '')
+  )
   axes.legend(loc='upper right', markerscale=20)
   figure.tight_layout()
   figure.savefig(path, dpi=140)
@@ -1553,7 +1570,14 @@ def main(_):
   logging.info('scene written to %s', _OUTPUT.value)
 
   if _OVERLAY.value:
-    write_overlay(_OVERLAY.value, voxels, boxes, crop)
+    write_overlay(
+        _OVERLAY.value, voxels, boxes, crop,
+        span=(
+            ((terrain.shape[0] - 1) * dx, (terrain.shape[1] - 1) * dx)
+            if _ROTATE_180.value
+            else None
+        ),
+    )
 
 
 if __name__ == '__main__':

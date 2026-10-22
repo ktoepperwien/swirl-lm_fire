@@ -53,6 +53,7 @@ from swirl_lm.jax.core import driver as driver_lib
 from swirl_lm.jax.equations import pressure as pressure_lib
 from swirl_lm.jax.examples.wui import extract_scene
 from swirl_lm.jax.examples.wui import wui
+from swirl_lm.jax.examples.wui import scene_to_vtk
 from swirl_lm.jax.examples.wui import wui_pb2
 from swirl_lm.jax.physics.thermodynamics import manager as thermodynamics_manager
 from swirl_lm.jax.utility import signed_distance as sdf
@@ -840,6 +841,61 @@ class ConfigurationTest(parameterized.TestCase):
     sim = wui.Wui(_case(path))
     self.assertIn('clamp_interior: false', sim.config_text())
     self.assertIn('num_d_rho_filter: 0', sim.config_text())
+
+
+class SceneExportTest(parameterized.TestCase):
+  """The ParaView export, whose two failure modes are both silent.
+
+  A transposed array opens, has the right size, and shows the domain the wrong
+  way round. A negated yaw draws every box but those at yaw zero somewhere
+  else -- the mistake the fitting overlay made for an afternoon.
+  """
+
+  def test_the_box_corners_follow_the_signed_distance_convention(self):
+    # The same check `GeometryFrameTest` makes of the solver's own boxes: a
+    # point along the box's local +x axis is inside it. Here it is made of the
+    # corners the exporter emits, so the two cannot drift apart.
+    centre = np.array([10.0, 20.0, 5.0])
+    half = np.array([6.0, 1.5, 3.0])
+    yaw = 35.0
+
+    corners = scene_to_vtk.box_corners(centre, half, yaw)
+
+    angle = np.radians(yaw)
+    along = np.array([np.cos(angle), np.sin(angle), 0.0])
+    # The long axis is local x, so the corners must reach further along
+    # `along` than across it.
+    reach_along = np.abs((corners - centre) @ along).max()
+    across = np.array([-np.sin(angle), np.cos(angle), 0.0])
+    reach_across = np.abs((corners - centre) @ across).max()
+    self.assertAlmostEqual(reach_along, 6.0, places=5)
+    self.assertAlmostEqual(reach_across, 1.5, places=5)
+
+  def test_the_corners_are_a_hexahedron_in_vtk_order(self):
+    corners = scene_to_vtk.box_corners(
+        np.zeros(3), np.array([1.0, 2.0, 3.0]), 0.0
+    )
+
+    self.assertEqual(corners.shape, (8, 3))
+    # The first four share the base, the last four the top.
+    np.testing.assert_allclose(corners[:4, 2], -3.0)
+    np.testing.assert_allclose(corners[4:, 2], +3.0)
+    # And the base is traversed rather than crossed: consecutive corners
+    # differ in exactly one horizontal coordinate.
+    for a, b in zip(corners[:4], np.roll(corners[:4], -1, axis=0)):
+      self.assertEqual(int(np.sum(~np.isclose(a[:2], b[:2]))), 1)
+
+  def test_the_vtk_ordering_puts_x_fastest(self):
+    # The archive is indexed x first, which in C order makes z fastest --
+    # exactly the opposite of what VTK reads.
+    array = np.arange(2 * 3 * 4, dtype=np.float32).reshape(2, 3, 4)
+
+    flat = scene_to_vtk._to_vtk_order(array)  # pylint: disable=protected-access
+
+    self.assertEqual(flat.shape, (24,))
+    # The first two entries differ by one step in x, not in z.
+    self.assertEqual(float(flat[0]), float(array[0, 0, 0]))
+    self.assertEqual(float(flat[1]), float(array[1, 0, 0]))
 
 
 class SolverChoiceTest(parameterized.TestCase):
