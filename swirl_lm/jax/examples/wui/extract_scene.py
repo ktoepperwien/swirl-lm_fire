@@ -92,6 +92,22 @@ _AIR_ABOVE = flags.DEFINE_float(
     'air_above', 80.0,
     'Air column above the highest terrain-plus-canopy, in metres.',
 )
+_TARGET_SHAPE = flags.DEFINE_list(
+    'target_shape', None,
+    'Three integers, the exact cell counts the domain must end up with. The '
+    'padding grows to reach them, so this is how a mesh is sized for a solver '
+    'that constrains its extents -- multigrid wants a power of two per core. '
+    'Refused if reaching it would leave less than `--margin` of clear fluid '
+    'per face, or if the vertical count is under what `--air_above` needs. '
+    'Left unset, the extent is whatever the crop plus the margin comes to.',
+)
+_ROTATE_180 = flags.DEFINE_bool(
+    'rotate_180', False,
+    'Rotate the scene half a turn about the vertical axis, so what was the '
+    'eastern face becomes the western one. The solver always blows along +x, '
+    'so this is how a wind from the east is expressed -- there is no '
+    'wind-direction input anywhere downstream.',
+)
 _MARGIN = flags.DEFINE_float(
     'margin', 16.0,
     'Clear fluid added around the built area, in metres. A building that '
@@ -602,6 +618,48 @@ def extract_buildings(
   return boxes_out, report
 
 
+def _target_padding(
+    have: int, want: int, minimum_cells: int, axis: str
+) -> tuple[int, int]:
+  """Cells to add at the low and high ends of one axis to reach `want`.
+
+  Split as evenly as the difference allows, the odd cell going to the high
+  end. An odd split is not a problem in itself -- the margin is clear fluid
+  either way -- but it does move the domain centre half a cell off the crop
+  centre, so it is worth being deliberate about which side gets it.
+
+  Args:
+    have: The cell count after cropping.
+    want: The cell count required.
+    minimum_cells: The least clear fluid each face must carry, in cells.
+    axis: The axis name, for the message.
+
+  Returns:
+    `(low, high)` cell counts to pad.
+
+  Raises:
+    ValueError: If `want` is below `have`, or if reaching it would leave less
+      than `minimum_cells` on a face.
+  """
+  if want < have:
+    raise ValueError(
+        f'--target_shape asks for {want} cells along {axis} but the crop is '
+        f'already {have}. The crop can only be trimmed by shrinking '
+        f'--half_width; the padding cannot remove cells.'
+    )
+  extra = want - have
+  low, high = extra // 2, extra - extra // 2
+  if min(low, high) < minimum_cells:
+    shortfall = minimum_cells - min(low, high)
+    raise ValueError(
+        f'--target_shape asks for {want} cells along {axis}, which leaves '
+        f'{min(low, high)} cells of clear fluid on a face where --margin '
+        f'needs {minimum_cells}. Raise the target by at least '
+        f'{2 * shortfall} cells, or lower --margin.'
+    )
+  return low, high
+
+
 def _snap_crop(
     crop: tuple[float, float, float, float], dx: float
 ) -> tuple[float, float, float, float]:
@@ -1097,6 +1155,7 @@ def pad_with_margin(
     crop: tuple[float, float, float, float],
     dx: float,
     margin: float,
+    target: tuple[int, int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], tuple]:
   """Surrounds the built area with clear fluid.
 
@@ -1120,31 +1179,105 @@ def pad_with_margin(
     margin: Clear fluid to add on each side, in metres. Rounded up to a
       multiple of `_CELL_MULTIPLE` cells so the padded counts stay
       decomposable.
+    target: Exact `(nx, ny)` cell counts to reach, or `None` to use `margin`
+      alone. When given, `margin` becomes a floor on what each face must still
+      carry rather than the amount added.
 
   Returns:
     `(terrain, fuel, boxes, crop)`, all padded and shifted.
+
+  Raises:
+    ValueError: If `target` cannot be reached while honouring `margin`.
   """
-  cells = int(np.ceil(margin / dx / _CELL_MULTIPLE) * _CELL_MULTIPLE)
-  if cells == 0:
+  minimum = int(np.ceil(margin / dx / _CELL_MULTIPLE) * _CELL_MULTIPLE)
+  if target is None:
+    pads = ((minimum, minimum), (minimum, minimum))
+  else:
+    pads = (
+        _target_padding(terrain.shape[0], target[0], minimum, 'x'),
+        _target_padding(terrain.shape[1], target[1], minimum, 'y'),
+    )
+  if not any(sum(pair) for pair in pads):
     return terrain, fuel, boxes, crop
-  offset = cells * dx
-  terrain = np.pad(terrain, cells, mode='edge')
-  fuel = np.pad(fuel, ((cells, cells), (cells, cells), (0, 0)))
+
+  terrain = np.pad(terrain, pads, mode='edge')
+  fuel = np.pad(fuel, pads + ((0, 0),))
   boxes = dict(boxes)
   boxes['box_centres'] = boxes['box_centres'] + np.array(
-      [offset, offset, 0.0], np.float32
+      [pads[0][0] * dx, pads[1][0] * dx, 0.0], np.float32
   )
   west, south, east, north = crop
   logging.info(
-      'padded with %d cells (%.0f m) of clear fluid on each side; the mesh '
-      'is now %d x %d', cells, offset, terrain.shape[0], terrain.shape[1],
+      'padded with (%d, %d) cells in x and (%d, %d) in y, at least %.0f m of '
+      'clear fluid on every face; the mesh is now %d x %d',
+      pads[0][0], pads[0][1], pads[1][0], pads[1][1],
+      min(p for pair in pads for p in pair) * dx,
+      terrain.shape[0], terrain.shape[1],
   )
   return (
       terrain,
       fuel,
       boxes,
-      (west - offset, south - offset, east + offset, north + offset),
+      (
+          west - pads[0][0] * dx,
+          south - pads[1][0] * dx,
+          east + pads[0][1] * dx,
+          north + pads[1][1] * dx,
+      ),
   )
+
+
+def rotate_half_turn(
+    terrain: np.ndarray,
+    fuel: np.ndarray,
+    boxes: dict[str, np.ndarray],
+    dx: float,
+) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+  """Turns the scene through 180 degrees about the vertical axis.
+
+  Both horizontal axes reverse. Reversing only x would be a reflection rather
+  than a rotation: it preserves the footprint outline but mirrors it, so every
+  building comes out as its own enantiomer and a wall that faced the wind on
+  one side of a ridge faces away from it on the other. A half turn keeps the
+  scene congruent to itself and only changes which face the wind arrives at.
+
+  Call after `pad_with_margin`, so the frame being reversed is the final one.
+  `origin_utm` is unchanged: it names the south-west corner of the domain,
+  which is still the south-west corner, now holding what used to be in the
+  north-east.
+
+  Args:
+    terrain: `(nx, ny)` terrain height above the floor.
+    fuel: `(nx, ny, nz)` bulk density.
+    boxes: The fitted boxes, in the solver frame.
+    dx: Horizontal spacing.
+
+  Returns:
+    `(terrain, fuel, boxes)`, rotated.
+  """
+  terrain = terrain[::-1, ::-1].copy()
+  fuel = fuel[::-1, ::-1, :].copy()
+
+  # The span the solver sees, which is node-inclusive: `Wui` derives
+  # `lx = (nx - 1) * dx`, so a centre at `x` maps to `lx - x` and not to
+  # `nx * dx - x`. Getting that wrong would shift every building half a cell.
+  lx = (terrain.shape[0] - 1) * dx
+  ly = (terrain.shape[1] - 1) * dx
+
+  boxes = dict(boxes)
+  centres = np.array(boxes['box_centres'], np.float32, copy=True)
+  centres[:, 0] = lx - centres[:, 0]
+  centres[:, 1] = ly - centres[:, 1]
+  boxes['box_centres'] = centres
+
+  # `box_rotations_deg` is left alone. A box is symmetric under a half turn,
+  # so its yaw is only defined modulo 180 degrees and `yaw + 180` describes
+  # the same body. Half extents are likewise unchanged.
+  logging.info(
+      'rotated the scene half a turn: the wind now arrives at what was the '
+      'eastern face'
+  )
+  return terrain, fuel, boxes
 
 
 def write_overlay(
@@ -1231,6 +1364,34 @@ def main(_):
   canopy_top = float(terrain.max()) + grid.bulk_density.shape[0] * grid.dz
   z_top = max(canopy_top, float(terrain.max())) + _AIR_ABOVE.value
   nz = int(np.ceil((z_top - z_floor) / dz / _CELL_MULTIPLE) * _CELL_MULTIPLE)
+
+  target = None
+  if _TARGET_SHAPE.value is not None:
+    if len(_TARGET_SHAPE.value) != 3:
+      raise ValueError(
+          '--target_shape takes three integers, the cell counts in x, y and '
+          f'z; got {_TARGET_SHAPE.value}.'
+      )
+    target = tuple(int(v) for v in _TARGET_SHAPE.value)
+    # The vertical is checked here rather than in `pad_with_margin`, which
+    # only touches the horizontal: nothing is ever padded in z, so the target
+    # has to be met by raising the column itself. Below the derived `nz` the
+    # air above the canopy would be less than `--air_above` asked for.
+    if target[2] < nz:
+      raise ValueError(
+          f'--target_shape asks for {target[2]} cells in z, but '
+          f'--air_above={_AIR_ABOVE.value:.0f} m above a canopy top of '
+          f'{canopy_top - z_floor:.0f} m needs {nz}. Raise the target or '
+          'lower --air_above.'
+      )
+    if target[2] > nz:
+      logging.info(
+          'raising the column from %d to %d cells, which puts %.0f m of air '
+          'above the canopy top instead of %.0f',
+          nz, target[2], target[2] * dz - (canopy_top - z_floor),
+          _AIR_ABOVE.value,
+      )
+    nz = target[2]
   fuel = resample_fuel(grid, terrain, crop, dx, dz, z_floor, nz)
 
   report: list[dict[str, Any]] = []
@@ -1257,8 +1418,11 @@ def main(_):
     logging.info('no buildings: terrain-only control')
 
   terrain, fuel, boxes, crop = pad_with_margin(
-      terrain, fuel, boxes, crop, dx, _MARGIN.value
+      terrain, fuel, boxes, crop, dx, _MARGIN.value,
+      target=None if target is None else target[:2],
   )
+  if _ROTATE_180.value:
+    terrain, fuel, boxes = rotate_half_turn(terrain, fuel, boxes, dx)
   logging.info(
       'target mesh %d x %d x %d at %.1f x %.1f x %.1f m (%.2f M cells)',
       terrain.shape[0], terrain.shape[1], nz, dx, dx, dz,
@@ -1302,6 +1466,8 @@ def main(_):
           'source_voxels': _VOXELS.value,
           'source_grid': _GRID.value,
           'datum_offset_m': datum_offset,
+          'rotated_180': bool(_ROTATE_180.value),
+          'target_shape': None if target is None else list(target),
           'note': (
               'All geometry is in the solver frame: metres from the '
               'south-west corner of the domain floor, whose UTM position and '

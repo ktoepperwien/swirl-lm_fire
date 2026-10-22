@@ -154,6 +154,155 @@ class SceneTest(parameterized.TestCase):
       wui.Wui(wui_pb2.WuiCase())
 
 
+class TargetShapeTest(parameterized.TestCase):
+  """An exact cell count, for a solver that constrains its extents.
+
+  Multigrid needs a power of two per core, which the crop will never happen to
+  be. The padding absorbs the difference -- terrain extended at its edge
+  value, fuel zero -- so the extra is clear fluid and the only question is
+  whether enough of it lands on each face.
+  """
+
+  def _scene(self, nx=328, ny=216, nz=4):
+    terrain = np.zeros((nx, ny), np.float32)
+    fuel = np.zeros((nx, ny, nz), np.float32)
+    boxes = {'box_centres': np.array([[10.0, 20.0, 5.0]], np.float32)}
+    return terrain, fuel, boxes, (0.0, 0.0, float(nx), float(ny))
+
+  def test_the_mesh_reaches_the_target_exactly(self):
+    terrain, fuel, boxes, crop = self._scene()
+
+    padded, fuel_padded, _, _ = extract_scene.pad_with_margin(
+        terrain, fuel, boxes, crop, 1.0, 50.0, target=(512, 512)
+    )
+
+    self.assertEqual(padded.shape, (512, 512))
+    self.assertEqual(fuel_padded.shape[:2], (512, 512))
+
+  def test_boxes_shift_by_the_low_side_padding_only(self):
+    # The low-side pad is what moves the origin, so that is what the centres
+    # move by. Using half the total would be wrong whenever the split is odd.
+    terrain, fuel, boxes, crop = self._scene()
+
+    _, _, shifted, _ = extract_scene.pad_with_margin(
+        terrain, fuel, boxes, crop, 1.0, 50.0, target=(512, 512)
+    )
+
+    np.testing.assert_allclose(
+        shifted['box_centres'][0, :2],
+        boxes['box_centres'][0, :2] + np.array([92.0, 148.0]),
+    )
+
+  def test_an_odd_difference_puts_the_extra_cell_on_the_high_side(self):
+    self.assertEqual(extract_scene._target_padding(328, 513, 56, 'x'), (92, 93))
+
+  def test_a_target_that_starves_a_face_is_refused(self):
+    # The failure this guards is silent under-padding: a box within `dx` of a
+    # face puts the face's condition and the immersed boundary's on the same
+    # cells, and the run goes non-finite within ten steps.
+    with self.assertRaisesRegex(ValueError, 'clear fluid'):
+      extract_scene._target_padding(328, 336, 56, 'x')
+
+  def test_a_target_below_the_crop_is_refused(self):
+    with self.assertRaisesRegex(ValueError, 'cannot remove cells'):
+      extract_scene._target_padding(328, 300, 56, 'x')
+
+  def test_without_a_target_the_margin_alone_decides(self):
+    # The behaviour before the flag existed, which has to be preserved: a
+    # symmetric pad of the margin rounded up to whole cell blocks.
+    terrain, fuel, boxes, crop = self._scene()
+
+    padded, _, _, _ = extract_scene.pad_with_margin(
+        terrain, fuel, boxes, crop, 1.0, 50.0
+    )
+
+    self.assertEqual(padded.shape, (328 + 112, 216 + 112))
+
+
+class RotationTest(parameterized.TestCase):
+  """A half turn about the vertical axis, which is how an east wind is said.
+
+  The solver blows along +x and nothing downstream takes a wind direction, so
+  the scene is turned rather than the wind.
+  """
+
+  def _scene(self, nx=12, ny=8, nz=5, dx=1.0):
+    rng = np.random.default_rng(0)
+    terrain = rng.standard_normal((nx, ny)).astype(np.float32)
+    fuel = rng.standard_normal((nx, ny, nz)).astype(np.float32)
+    boxes = {
+        'box_centres': np.array(
+            [[2.0, 3.0, 4.0], [9.0, 1.0, 2.0]], np.float32
+        ),
+        'box_half_extents': np.array(
+            [[1.0, 2.0, 3.0], [2.0, 1.0, 1.0]], np.float32
+        ),
+        'box_rotations_deg': np.array(
+            [[0.0, 0.0, 35.0], [0.0, 0.0, 68.5]], np.float32
+        ),
+    }
+    return terrain, fuel, boxes, dx
+
+  def test_both_horizontal_axes_reverse(self):
+    # Reversing only x would be a reflection, not a rotation: the footprints
+    # would come out mirrored, so a wall facing the wind on one side of a
+    # ridge would face away from it on the other.
+    terrain, fuel, boxes, dx = self._scene()
+
+    rotated_terrain, rotated_fuel, _ = extract_scene.rotate_half_turn(
+        terrain, fuel, boxes, dx
+    )
+
+    np.testing.assert_array_equal(rotated_terrain, terrain[::-1, ::-1])
+    np.testing.assert_array_equal(rotated_fuel, fuel[::-1, ::-1, :])
+
+  def test_box_centres_reflect_about_the_node_inclusive_span(self):
+    # `Wui` derives `lx = (nx - 1) * dx`, so the centre maps to `lx - x` and
+    # not to `nx * dx - x`. The difference is half a cell on every building.
+    terrain, fuel, boxes, dx = self._scene()
+    lx = (terrain.shape[0] - 1) * dx
+    ly = (terrain.shape[1] - 1) * dx
+
+    _, _, rotated = extract_scene.rotate_half_turn(terrain, fuel, boxes, dx)
+
+    np.testing.assert_allclose(
+        rotated['box_centres'][:, 0], lx - boxes['box_centres'][:, 0]
+    )
+    np.testing.assert_allclose(
+        rotated['box_centres'][:, 1], ly - boxes['box_centres'][:, 1]
+    )
+
+  def test_vertical_placement_and_shape_are_untouched(self):
+    # A half turn is horizontal. The yaw is left alone because a box is
+    # symmetric under it: `yaw + 180` describes the same body.
+    terrain, fuel, boxes, dx = self._scene()
+
+    _, _, rotated = extract_scene.rotate_half_turn(terrain, fuel, boxes, dx)
+
+    np.testing.assert_array_equal(
+        rotated['box_centres'][:, 2], boxes['box_centres'][:, 2]
+    )
+    np.testing.assert_array_equal(
+        rotated['box_half_extents'], boxes['box_half_extents']
+    )
+    np.testing.assert_array_equal(
+        rotated['box_rotations_deg'], boxes['box_rotations_deg']
+    )
+
+  def test_turning_twice_is_the_identity(self):
+    terrain, fuel, boxes, dx = self._scene()
+    before = np.array(boxes['box_centres'], copy=True)
+
+    once = extract_scene.rotate_half_turn(terrain, fuel, boxes, dx)
+    twice = extract_scene.rotate_half_turn(*once, dx)
+
+    np.testing.assert_array_equal(twice[0], terrain)
+    np.testing.assert_array_equal(twice[1], fuel)
+    np.testing.assert_allclose(twice[2]['box_centres'], before)
+    # And the caller's arrays were not written through.
+    np.testing.assert_array_equal(boxes['box_centres'], before)
+
+
 class GeometryFrameTest(parameterized.TestCase):
   """The boxes land where the scene file says they do."""
 
