@@ -548,14 +548,21 @@ class Wui:
     ny = self._grid_size(self.fy, case.cores_y, 'y')
     nz = self._grid_size(self.fz, case.cores_z, 'z')
 
-    # The lateral faces and the lid are slip walls: the normal component is
-    # Dirichlet zero and the tangential ones are zero gradient. The normal
-    # component has to be Dirichlet. `boundary_condition_utils.is_outflow`
-    # tests exactly one thing -- all three components Neumann -- so a face
-    # left entirely zero gradient is classified as an outlet, nothing
-    # constrains the transverse momentum, and with `pressure_outlet` the
-    # pressure is pinned along that face as well. On the cylinder that made
-    # the wake leave through the side of the domain.
+    # The lateral faces are slip walls: the normal component is Dirichlet
+    # zero and the tangential ones are zero gradient. The normal component has
+    # to be Dirichlet. `boundary_condition_utils.is_outflow` tests exactly one
+    # thing -- all three components Neumann -- so a face left entirely zero
+    # gradient is classified as an outlet, nothing constrains the transverse
+    # momentum, and with `pressure_outlet` the pressure is pinned along that
+    # face as well. On the cylinder that made the wake leave through the side
+    # of the domain.
+    #
+    # The lid is the deliberate exception, and is an outlet for exactly that
+    # reason. A buoyant plume rising off a fire reaches the top of the domain;
+    # held there by `w = 0` it has nowhere to go but sideways, and the
+    # recirculation that produces is an artefact of the box rather than
+    # anything about the fire. The side faces are what the cylinder's wake
+    # escaped through, and those stay walls.
     #
     # The floor is no-slip, but it is also buried several metres inside the
     # terrain, so nothing there is ever in the fluid.
@@ -582,7 +589,7 @@ class Wui:
             (1, 0, 'NEUMANN', 0.0),
             (1, 1, 'NEUMANN', 0.0),
             (2, 0, 'DIRICHLET', 0.0),
-            (2, 1, 'DIRICHLET', 0.0),          # lid: no through-flow
+            (2, 1, 'NEUMANN', 0.0),            # the plume leaves here
         ],
     }
 

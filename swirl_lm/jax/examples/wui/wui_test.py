@@ -43,11 +43,15 @@ import numpy as np
 from scipy import ndimage
 
 from swirl_lm.jax.boundary_condition import immersed_boundary_ghost_point as gp
+from swirl_lm.jax.boundary_condition import boundary_condition_utils
 from swirl_lm.jax.boundary_condition import immersed_boundary_method
+from swirl_lm.jax.communication import halo_exchange_utils
 from swirl_lm.jax.core import driver as driver_lib
+from swirl_lm.jax.equations import pressure as pressure_lib
 from swirl_lm.jax.examples.wui import extract_scene
 from swirl_lm.jax.examples.wui import wui
 from swirl_lm.jax.examples.wui import wui_pb2
+from swirl_lm.jax.physics.thermodynamics import manager as thermodynamics_manager
 from swirl_lm.jax.utility import signed_distance as sdf
 
 
@@ -725,17 +729,66 @@ class ConfigurationTest(parameterized.TestCase):
   def test_the_lateral_faces_are_not_classified_as_outlets(self):
     """All three components Neumann on a face makes it an outlet, and with
     `pressure_outlet` that pins the pressure along the side of the domain.
-    On the cylinder it sent the wake out through the side wall."""
+    On the cylinder it sent the wake out through the side wall.
+
+    The lid is deliberately excluded -- see the test below. The sides are what
+    the cylinder failed on and they stay walls.
+    """
     path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
     sim = wui.Wui(_case(path))
     bc = sim.params.bc
-    for dim, face in ((1, 0), (1, 1), (2, 1)):
+    for dim, face in ((1, 0), (1, 1)):
       kinds = [str(bc[name][dim][face][0]) for name in ('u', 'v', 'w')]
       self.assertTrue(
           any(kind.endswith('DIRICHLET') for kind in kinds),
           msg=f'face (dim {dim}, location {face}) is entirely zero '
               f'gradient, which `is_outflow` reads as an outlet: {kinds}',
       )
+
+  def test_the_lid_is_an_outlet_so_the_plume_can_leave(self):
+    """A rising plume held at the top by `w = 0` goes sideways instead.
+
+    The recirculation that produces is a property of the box, not of the fire.
+    This is the one face where being classified as an outlet is wanted, so it
+    is asserted rather than merely allowed -- the previous configuration had
+    `w` Dirichlet here and the assertion above covered it.
+    """
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path))
+    bc = sim.params.bc
+
+    kinds = [str(bc[name][2][1][0]) for name in ('u', 'v', 'w')]
+    self.assertTrue(
+        all('NEUMANN' in kind for kind in kinds),
+        msg=f'the lid is not entirely zero gradient: {kinds}',
+    )
+    self.assertEqual(
+        boundary_condition_utils.BoundaryType.OUTFLOW,
+        sim.params.bc_type[2][1],
+    )
+
+  def test_the_pressure_is_pinned_at_both_outlets(self):
+    """`pressure_outlet` makes every OUTFLOW face Dirichlet for `p`.
+
+    With the lid open there are two, which keeps the Poisson problem
+    non-singular as the single outlet did.
+    """
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path))
+    pressure = pressure_lib.Pressure(
+        sim.params, thermodynamics_manager.ThermodynamicsManager(sim.params)
+    )
+
+    dirichlet = [
+        (dim, face)
+        for dim in range(3)
+        for face in range(2)
+        if pressure._bc['p'][dim][face] is not None  # pylint: disable=protected-access
+        and pressure._bc['p'][dim][face][0]  # pylint: disable=protected-access
+        == halo_exchange_utils.BCType.DIRICHLET
+    ]
+
+    self.assertCountEqual(dirichlet, [(0, 1), (2, 1)])
 
   def test_the_solid_interior_is_not_clamped(self):
     """Holding the solid at the boundary value destabilises the fluid.
