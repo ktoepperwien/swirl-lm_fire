@@ -745,6 +745,33 @@ class ConfigurationTest(parameterized.TestCase):
               f'gradient, which `is_outflow` reads as an outlet: {kinds}',
       )
 
+  def test_a_closed_lid_is_not_an_outlet(self):
+    # The alternative, for when the top is far enough above the scene that
+    # the plume never reaches it. Only `w` differs between the two.
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    sim = wui.Wui(_case(path, open_top=False))
+    bc = sim.params.bc
+
+    self.assertIn('DIRICHLET', str(bc['w'][2][1][0]))
+    self.assertNotEqual(
+        boundary_condition_utils.BoundaryType.OUTFLOW,
+        sim.params.bc_type[2][1],
+    )
+    # And then the outlet at x-high is the only pinned pressure face, which
+    # is what every run before this one had.
+    pressure = pressure_lib.Pressure(
+        sim.params, thermodynamics_manager.ThermodynamicsManager(sim.params)
+    )
+    dirichlet = [
+        (dim, face)
+        for dim in range(3)
+        for face in range(2)
+        if pressure._bc['p'][dim][face] is not None  # pylint: disable=protected-access
+        and pressure._bc['p'][dim][face][0]  # pylint: disable=protected-access
+        == halo_exchange_utils.BCType.DIRICHLET
+    ]
+    self.assertCountEqual(dirichlet, [(0, 1)])
+
   def test_the_lid_is_an_outlet_so_the_plume_can_leave(self):
     """A rising plume held at the top by `w = 0` goes sideways instead.
 

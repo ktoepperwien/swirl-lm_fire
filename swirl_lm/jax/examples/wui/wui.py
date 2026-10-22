@@ -557,12 +557,18 @@ class Wui:
     # face as well. On the cylinder that made the wake leave through the side
     # of the domain.
     #
-    # The lid is the deliberate exception, and is an outlet for exactly that
-    # reason. A buoyant plume rising off a fire reaches the top of the domain;
-    # held there by `w = 0` it has nowhere to go but sideways, and the
+    # The lid is the deliberate exception when `open_top` is set, which it is
+    # by default. A buoyant plume rising off a fire reaches the top of the
+    # domain; held there by `w = 0` it has nowhere to go but sideways, and the
     # recirculation that produces is an artefact of the box rather than
     # anything about the fire. The side faces are what the cylinder's wake
-    # escaped through, and those stay walls.
+    # escaped through, and those stay walls either way.
+    #
+    # Closing it is worth trying when the top is far enough above the scene
+    # that the plume never arrives: the power-of-two extent leaves about 148 m
+    # of air above the canopy against the 100 m asked for. A lid also
+    # constrains the transverse momentum an outlet leaves free, and it is the
+    # better-tested of the two, every run before this one having had it.
     #
     # The floor is no-slip, but it is also buried several metres inside the
     # terrain, so nothing there is ever in the fluid.
@@ -589,7 +595,9 @@ class Wui:
             (1, 0, 'NEUMANN', 0.0),
             (1, 1, 'NEUMANN', 0.0),
             (2, 0, 'DIRICHLET', 0.0),
-            (2, 1, 'NEUMANN', 0.0),            # the plume leaves here
+            # An outlet needs every component zero gradient; a lid needs the
+            # normal one pinned. Only `w` differs between the two.
+            (2, 1, 'NEUMANN' if case.open_top else 'DIRICHLET', 0.0),
         ],
     }
 

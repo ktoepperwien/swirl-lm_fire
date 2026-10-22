@@ -103,6 +103,19 @@ message WuiCase {
   // smaller: it only has to cover the padded margin, which is 16 m of 238 m
   // here, plus a little transition. Set to zero to damp the outlet alone.
   optional float lateral_sponge_fraction = 22 [default = 0.08];
+  // Whether the top of the domain lets flow through. An outlet -- all three
+  // velocity components zero gradient -- is what `is_outflow` classifies as
+  // one, and `pressure_outlet` then pins the pressure there too.
+  //
+  // Open is the default because a buoyant plume held at the top by `w = 0`
+  // has nowhere to go but sideways, and that recirculation belongs to the box
+  // rather than to the fire. A lid is worth trying when the top is far enough
+  // above the scene that the plume never reaches it: the power-of-two extent
+  // puts it about 148 m above the canopy, against the 100 m the case asks
+  // for, so there is room. The lid is also the better-tested of the two --
+  // every run before this one had it -- and it constrains the transverse
+  // momentum that an outlet leaves free.
+  optional bool open_top = 23 [default = true];
 
   // -- Numerics -------------------------------------------------------------
 
