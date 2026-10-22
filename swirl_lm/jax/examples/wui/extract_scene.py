@@ -238,6 +238,8 @@ class Grid:
 
   elevation: np.ndarray          # (ny, nx), row 0 is north
   bulk_density: np.ndarray       # (nz, ny, nx), terrain-following, 1 m levels
+  surface_load: np.ndarray       # (ny, nx), kg/m^2, zero where absent
+  surface_depth: np.ndarray      # (ny, nx), m, the layer the load occupies
   west: float
   south: float
   north: float
@@ -298,9 +300,26 @@ def read_grid(path: str) -> Grid:
   store = zarr.open(path, mode='r')
   attrs = dict(store.attrs)
   bounds = attrs['bounds']
+  # The surface layer is a later addition to the FastFuels product: the
+  # Mandeville store this case was built against has `tree` and `topography`
+  # only. Absent, the surface contributes nothing and the canopy alone is the
+  # fuel, which is what every run before this one used.
+  if 'surface' in store:
+    surface_load = np.asarray(store['surface/fuelLoad']).astype(np.float64)
+    surface_depth = np.asarray(store['surface/fuelDepth']).astype(np.float64)
+  else:
+    logging.warning(
+        '%s has no `surface` group; the surface fuel load is taken as zero '
+        'and only the canopy contributes', path,
+    )
+    shape = np.asarray(store['topography/elevation']).shape
+    surface_load = np.zeros(shape, np.float64)
+    surface_depth = np.zeros(shape, np.float64)
   grid = Grid(
       elevation=np.asarray(store['topography/elevation']).astype(np.float64),
       bulk_density=np.asarray(store['tree/bulkDensity']).astype(np.float32),
+      surface_load=surface_load,
+      surface_depth=surface_depth,
       west=float(bounds['west']),
       south=float(bounds['south']),
       north=float(bounds['north']),
@@ -308,11 +327,21 @@ def read_grid(path: str) -> Grid:
       dz=float(attrs['dz']),
   )
   logging.info(
-      'grid: elevation %.0f..%.0f m (relief %.0f), fuel %s, %.1f%% non-zero',
+      'grid: elevation %.0f..%.0f m (relief %.0f), canopy %s, %.1f%% non-zero',
       grid.elevation.min(), grid.elevation.max(),
       grid.elevation.max() - grid.elevation.min(),
       grid.bulk_density.shape, 100.0 * (grid.bulk_density > 0).mean(),
   )
+  present = grid.surface_depth > 0.0
+  if present.any():
+    density = grid.surface_load[present] / grid.surface_depth[present]
+    logging.info(
+        'surface fuel: %.1f%% of cells carry a load, depth %.2f..%.2f m, '
+        'bulk density %.3f..%.3f kg/m^3 (median %.3f)',
+        100.0 * present.mean(),
+        grid.surface_depth[present].min(), grid.surface_depth[present].max(),
+        density.min(), density.max(), float(np.median(density)),
+    )
   return grid
 
 
@@ -766,6 +795,30 @@ def resample_fuel(
   terrain, which is also why this is the one place the terrain has to be
   consistent between the two.
 
+  Two contributions, summed. The canopy arrives already as a bulk density, one
+  value per metre of height. The surface layer arrives as a **load** in kg/m^2
+  over a separate depth in metres, which is what `surface/fuelDepth` is in the
+  store for. Measured on the Sleepy Hollow data the layer is 0.09 to 0.46 m
+  deep carrying up to 1.39 kg/m^3 of density, against a canopy reaching 3.42;
+  the surface covers 91% of cells and the canopy 2%, so neither dominates
+  everywhere.
+
+  The surface is distributed by **overlap**, so that each cell holds the mean
+  density of the fuel actually inside it: `load * overlap / (depth * dz)`. The
+  invariant that fixes this is the column integral, because the drag on a
+  column is proportional to `sum(rho_f) * dz` -- so the load, not the in-layer
+  density, is the thing that must survive a change of mesh.
+
+  Both limits come out right. A layer thinner than a cell, which at 1 m is
+  every cell on this data, puts `load / dz` into the first cell above the
+  ground. A cell entirely inside a thick layer gets `load / depth`, the
+  density within it.
+
+  Testing the cell *centre* against the layer instead drops the fuel
+  altogether here: the first centre above ground sits half a cell up, 0.5 m at
+  this spacing, and the layer is at most 0.46 m deep, so no centre is ever
+  inside it.
+
   Args:
     grid: The FastFuels grid.
     terrain: `(nx, ny)` elevations from `resample_terrain`.
@@ -795,7 +848,26 @@ def resample_fuel(
   valid = (level >= 0) & (level < column.shape[2])
   safe = np.clip(level, 0, column.shape[2] - 1)
   fuel = np.take_along_axis(column, safe, axis=2)
-  return np.where(valid, fuel, 0.0).astype(np.float32)
+  fuel = np.where(valid, fuel, 0.0)
+
+  # The surface layer, spread over whatever part of each cell it occupies.
+  # Guarded on the depth rather than the load: a zero depth is how the store
+  # says there is no surface fuel here, and dividing by it would put an
+  # infinity into a field the drag reads directly.
+  depth = grid.surface_depth[row[None, :], col[:, None]][:, :, None]
+  load = grid.surface_load[row[None, :], col[:, None]][:, :, None]
+  overlap = np.clip(
+      np.minimum(hag + 0.5 * dz, depth) - np.maximum(hag - 0.5 * dz, 0.0),
+      0.0,
+      None,
+  )
+  fuel = fuel + np.where(
+      depth > 0.0,
+      load * overlap / np.where(depth > 0.0, depth * dz, 1.0),
+      0.0,
+  )
+
+  return fuel.astype(np.float32)
 
 
 def flattest_patch(

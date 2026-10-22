@@ -219,6 +219,115 @@ class TargetShapeTest(parameterized.TestCase):
     self.assertEqual(padded.shape, (328 + 112, 216 + 112))
 
 
+class SurfaceFuelTest(parameterized.TestCase):
+  """The surface layer, which arrives as a load rather than a density.
+
+  `tree/bulkDensity` is kg/m^3 already. `surface/fuelLoad` is kg/m^2 over a
+  separate `surface/fuelDepth`, so the density it stands for is the load
+  divided by that depth. Getting this wrong is silent: the drag reads `rho_f`
+  directly and a load used as a density is wrong by a factor of the depth,
+  which on this data is between two and eleven.
+  """
+
+  def _grid(self, load=0.25, depth=0.5, canopy=1.0, elevation=10.0):
+    ny, nx, levels = 4, 4, 3
+    return extract_scene.Grid(
+        elevation=np.full((ny, nx), elevation, np.float64),
+        bulk_density=np.full((levels, ny, nx), canopy, np.float32),
+        surface_load=np.full((ny, nx), load, np.float64),
+        surface_depth=np.full((ny, nx), depth, np.float64),
+        west=0.0,
+        south=0.0,
+        north=float(ny),
+        dx=1.0,
+        dz=1.0,
+    )
+
+  def _resample(self, grid, nz=8, dz=1.0):
+    terrain = np.full((4, 4), float(grid.elevation[0, 0]), np.float64)
+    z_floor = float(terrain.min()) - 2.0
+    fuel = extract_scene.resample_fuel(
+        grid, terrain, (0.0, 0.0, 4.0, 4.0), 1.0, dz, z_floor, nz
+    )
+    hag = (z_floor + (np.arange(nz) + 0.5) * dz)[None, None, :] - terrain[
+        :, :, None
+    ]
+    return fuel, hag
+
+  def test_the_column_integral_is_the_load(self):
+    # The invariant: the drag on a column is proportional to `sum(rho_f) * dz`,
+    # so the load is what must survive, not the in-layer density.
+    grid = self._grid(load=0.25, depth=0.5, canopy=0.0)
+
+    fuel, _ = self._resample(grid)
+
+    np.testing.assert_allclose(fuel.sum(axis=2) * 1.0, 0.25, atol=1e-6)
+
+  def test_a_layer_thinner_than_a_cell_lands_in_the_first_cell(self):
+    # At 1 m every surface layer on this data is thinner than a cell, and the
+    # first cell centre above ground sits 0.5 m up while the layer is at most
+    # 0.46 m deep -- so testing the centre against the layer drops the fuel
+    # entirely. That was the first version of this code.
+    grid = self._grid(load=0.25, depth=0.4, canopy=0.0)
+
+    fuel, hag = self._resample(grid)
+
+    first = np.argmax(hag[0, 0] > 0.0)
+    self.assertAlmostEqual(float(fuel[0, 0, first]), 0.25, places=6)
+    np.testing.assert_allclose(
+        np.delete(fuel[0, 0], first), 0.0, atol=1e-6
+    )
+
+  def test_a_cell_inside_a_thick_layer_gets_the_in_layer_density(self):
+    # The other limit. A layer several cells deep gives each interior cell the
+    # density within it, `load / depth`.
+    grid = self._grid(load=1.0, depth=4.0, canopy=0.0)
+
+    fuel, hag = self._resample(grid)
+
+    deep = (hag > 0.5) & (hag < 3.5)
+    np.testing.assert_allclose(fuel[deep], 1.0 / 4.0, atol=1e-6)
+
+  def test_the_surface_and_the_canopy_add(self):
+    grid = self._grid(load=0.25, depth=0.4, canopy=1.0)
+
+    fuel, hag = self._resample(grid)
+
+    # Above the surface layer, the canopy alone.
+    above = (hag >= 1.0) & (hag < 3.0)
+    np.testing.assert_allclose(fuel[above], 1.0, atol=1e-6)
+    # And the first cell carries both.
+    first = np.argmax(hag[0, 0] > 0.0)
+    self.assertAlmostEqual(float(fuel[0, 0, first]), 1.0 + 0.25, places=6)
+
+  def test_the_surface_stays_at_or_below_its_depth(self):
+    grid = self._grid(load=0.25, depth=0.4, canopy=0.0)
+
+    fuel, hag = self._resample(grid)
+
+    np.testing.assert_allclose(fuel[hag < -0.5], 0.0, atol=1e-6)
+    np.testing.assert_allclose(fuel[hag > 1.0], 0.0, atol=1e-6)
+
+  def test_the_column_integral_does_not_depend_on_the_mesh(self):
+    grid = self._grid(load=0.25, depth=0.4, canopy=0.0)
+
+    coarse, _ = self._resample(grid, nz=8, dz=1.0)
+    fine, _ = self._resample(grid, nz=32, dz=0.25)
+
+    self.assertAlmostEqual(float(coarse.sum(axis=2).max() * 1.0), 0.25, places=6)
+    self.assertAlmostEqual(float(fine.sum(axis=2).max() * 0.25), 0.25, places=6)
+
+  def test_a_zero_depth_contributes_nothing_rather_than_an_infinity(self):
+    # Zero depth is how the store says there is no surface fuel here. A naive
+    # division would put an infinity into a field the drag reads directly.
+    grid = self._grid(load=0.25, depth=0.0, canopy=0.0)
+
+    fuel, _ = self._resample(grid)
+
+    self.assertTrue(np.all(np.isfinite(fuel)))
+    np.testing.assert_allclose(fuel, 0.0, atol=1e-6)
+
+
 class RotationTest(parameterized.TestCase):
   """A half turn about the vertical axis, which is how an east wind is said.
 
