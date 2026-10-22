@@ -44,7 +44,7 @@ grid_params {
     computation_shape {
       dim_0: 1
       dim_1: 1
-      dim_2: 1
+      dim_2: 2
     }
   # The physical size of the simulation domain in units of m.
   length {
@@ -57,7 +57,11 @@ grid_params {
   grid_size {
     dim_0: 132
     dim_1: 132
-    dim_2: 132
+    # Sixty-eight, not 132. `grid_size` counts per core, so splitting z two
+    # ways while leaving 132 here would double the domain rather than divide
+    # it. 64 interior per core across two cores is the same global 128 cubed
+    # the single-device run used, which is what makes the two comparable.
+    dim_2: 68
   }
   # The width of the ghost cells on each side of the domain. It is set to 2
   # considering the stencil width of the QUICK scheme.
