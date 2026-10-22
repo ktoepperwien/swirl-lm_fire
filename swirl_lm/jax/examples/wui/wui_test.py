@@ -40,7 +40,10 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 import numpy as np
+from google.protobuf import text_format
 from scipy import ndimage
+
+from swirl_lm.base import parameters_pb2
 
 from swirl_lm.jax.boundary_condition import immersed_boundary_ghost_point as gp
 from swirl_lm.jax.boundary_condition import boundary_condition_utils
@@ -837,6 +840,98 @@ class ConfigurationTest(parameterized.TestCase):
     sim = wui.Wui(_case(path))
     self.assertIn('clamp_interior: false', sim.config_text())
     self.assertIn('num_d_rho_filter: 0', sim.config_text())
+
+
+class SolverChoiceTest(parameterized.TestCase):
+  """Which Poisson solver the generated configuration selects.
+
+  Jacobi remains the default: it is what every result from this case so far
+  was produced with, and at `pressure_iterations` it leaves most of the
+  divergence in place -- which is why no number from this case should be
+  quoted. The other two exist so that can change.
+  """
+
+  @parameterized.named_parameters(
+      ('jacobi', 'JACOBI', 'jacobi'),
+      ('conjugate_gradient', 'CONJUGATE_GRADIENT', 'conjugate_gradient'),
+      ('multigrid', 'MULTIGRID', 'multigrid'),
+  )
+  def test_the_generated_config_selects_the_requested_solver(
+      self, name, expected
+  ):
+    # Parsed rather than string-matched, and the oneof read back: the text is
+    # checked against the TensorFlow proto, which is where a field spelled for
+    # the wrong one shows up.
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    case = _case(path)
+    case.solver = getattr(wui_pb2.WuiCase, name)
+    sim = wui.Wui(case)
+
+    config = parameters_pb2.SwirlLMParameters()
+    text_format.Parse(sim.config_text(), config)
+
+    self.assertEqual(config.pressure.solver.WhichOneof('solver'), expected)
+
+  def test_the_iteration_count_reaches_every_solver(self):
+    # One knob, three meanings -- sweeps, iterations, V-cycles -- so each
+    # branch has to read it and the useful values differ by orders of
+    # magnitude.
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    for name, field in (
+        ('JACOBI', 'max_iterations'),
+        ('CONJUGATE_GRADIENT', 'max_iterations'),
+        ('MULTIGRID', 'num_iterations'),
+    ):
+      case = _case(path, pressure_iterations=7)
+      case.solver = getattr(wui_pb2.WuiCase, name)
+      config = parameters_pb2.SwirlLMParameters()
+      text_format.Parse(wui.Wui(case).config_text(), config)
+
+      selected = getattr(
+          config.pressure.solver, config.pressure.solver.WhichOneof('solver')
+      )
+      self.assertEqual(getattr(selected, field), 7, msg=name)
+
+  def test_conjugate_gradient_asks_for_a_relative_tolerance(self):
+    # `atol` is absolute unless `l2_norm_reduction` is set, and the norm of
+    # the right hand side scales with the mesh and the flow -- so one fixed
+    # number means a converged solve on this grid and an immediate stop on
+    # another.
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    case = _case(path)
+    case.solver = wui_pb2.WuiCase.CONJUGATE_GRADIENT
+
+    config = parameters_pb2.SwirlLMParameters()
+    text_format.Parse(wui.Wui(case).config_text(), config)
+
+    self.assertTrue(config.pressure.solver.conjugate_gradient.l2_norm_reduction)
+    # And `reprojection` is left for `Pressure` to settle from the boundary
+    # conditions; with an outlet pinning the level it must come out off.
+    self.assertFalse(
+        config.pressure.solver.conjugate_gradient.HasField('reprojection')
+    )
+
+  def test_multigrid_stops_coarsening_at_eight(self):
+    # Four cells cannot hold the five-point Galerkin coarse operator; on the
+    # fire case that diverged to 1.8e+09 after eight cycles against 1.99e-04
+    # stopping at eight.
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+    case = _case(path)
+    case.solver = wui_pb2.WuiCase.MULTIGRID
+
+    config = parameters_pb2.SwirlLMParameters()
+    text_format.Parse(wui.Wui(case).config_text(), config)
+
+    shape = config.pressure.solver.multigrid.coarsest_subgrid_shape
+    self.assertEqual((shape.dim_0, shape.dim_1, shape.dim_2), (8, 8, 8))
+
+  def test_jacobi_is_the_default(self):
+    path = _write_scene(os.path.join(self.create_tempdir(), 'scene.npz'))
+
+    config = parameters_pb2.SwirlLMParameters()
+    text_format.Parse(wui.Wui(_case(path)).config_text(), config)
+
+    self.assertEqual(config.pressure.solver.WhichOneof('solver'), 'jacobi')
 
 
 class InteriorClampTest(parameterized.TestCase):

@@ -533,6 +533,69 @@ class Wui:
 {variables}
   }}"""
 
+  def _solver_text(self) -> str:
+    """The Poisson solver block, indented to sit inside `solver {}`.
+
+    `pressure_iterations` is the iteration count for all three, so it means
+    sweeps, iterations or V-cycles depending on which is selected and the
+    useful magnitudes differ accordingly.
+
+    Returns:
+      The configuration text for the selected solver.
+
+    Raises:
+      ValueError: If the solver is unrecognised.
+    """
+    case = self.case
+    solver = case.solver
+    if solver == wui_pb2.WuiCase.JACOBI:
+      return (
+          f'    jacobi {{\n'
+          f'      max_iterations: {case.pressure_iterations}\n'
+          f'      halo_width: {case.halo_width}\n'
+          f'      omega: 0.67\n'
+          f'    }}'
+      )
+    if solver == wui_pb2.WuiCase.CONJUGATE_GRADIENT:
+      # `atol` is relative, which `l2_norm_reduction` is what selects: the
+      # norm of the right hand side scales with the mesh and the flow, so one
+      # absolute number means a converged solve on this grid and an immediate
+      # stop on another. `reprojection` is left unset deliberately --
+      # `Pressure` decides it from the boundary conditions once they are
+      # settled, and with an outlet pinning the level it must be off.
+      return (
+          f'    conjugate_gradient {{\n'
+          f'      max_iterations: {case.pressure_iterations}\n'
+          f'      halo_width: {case.halo_width}\n'
+          f'      atol: 1e-6\n'
+          f'      l2_norm_reduction: true\n'
+          f'    }}'
+      )
+    if solver == wui_pb2.WuiCase.MULTIGRID:
+      # Two weighted Jacobi sweeps either side of the coarse correction, the
+      # damping of 2/3 being the standard smoother choice, and a coarsest
+      # grid of eight: the Galerkin coarse operator spans five points per
+      # axis and four cells cannot hold it. These are the values the fire
+      # case was measured at; none of them is exposed because nothing has yet
+      # given a reason to vary them.
+      return (
+          f'    multigrid {{\n'
+          f'      num_iterations: {case.pressure_iterations}\n'
+          f'      n_smooth: 2\n'
+          f'      weight: 0.6667\n'
+          f'      n_coarse: 1\n'
+          # `dim_0/1/2`, not `dim_x/y/z`: this text is parsed against the
+          # TensorFlow `swirl_lm.CoordinateInt`, whose fields are numbered.
+          # `simulation._COORDINATE_ALIASES` renames them on the way into the
+          # JAX proto, which spells them by axis.
+          f'      coarsest_subgrid_shape {{ dim_0: 8 dim_1: 8 dim_2: 8 }}\n'
+          f'    }}'
+      )
+    raise ValueError(
+        f'Unrecognised solver {solver}; expected one of '
+        f'{[wui_pb2.WuiCase.Solver.Name(v) for v in (0, 1, 2)]}.'
+    )
+
   def config_text(self) -> str:
     """The solver configuration this case expands into, as a text proto.
 
@@ -664,17 +727,13 @@ grid_params {{
 }}
 pressure {{
   solver {{
-    jacobi {{
-      max_iterations: {case.pressure_iterations}
-      halo_width: {case.halo_width}
-      omega: 0.67
-    }}
+{self._solver_text()}
   }}
-  # Pins the pressure level at the outlet, which is the only face classified
-  # as one: every other face has at least one velocity component Dirichlet.
-  # Without this every non-periodic face carries a homogeneous Neumann
-  # condition, the Poisson problem is singular, and the unconverged residual
-  # acts as a spurious global pressure gradient.
+  # Pins the pressure level at every face classified as an outlet -- x-high
+  # always, and the top as well when `open_top` is set. Without this each
+  # non-periodic face carries a homogeneous Neumann condition, the Poisson
+  # problem is singular, and the unconverged residual acts as a spurious
+  # global pressure gradient.
   pressure_outlet: true
   # The density is constant, so `drho` is identically zero and filtering it
   # is pure waste -- at run time, and at compile time where XLA constant

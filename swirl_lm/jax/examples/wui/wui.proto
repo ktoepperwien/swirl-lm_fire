@@ -117,6 +117,29 @@ message WuiCase {
   // momentum that an outlet leaves free.
   optional bool open_top = 23 [default = true];
 
+  // Which Poisson solver runs. Jacobi is the default because it is what every
+  // result from this case so far was produced with, not because it is good:
+  // at `pressure_iterations` it leaves most of the divergence in place, which
+  // is why no number from this case should be quoted.
+  //
+  // `pressure_iterations` is the count for all three -- sweeps for Jacobi,
+  // iterations for conjugate gradient, V-cycles for multigrid -- so it means
+  // something different in each and the useful values differ by orders of
+  // magnitude. Jacobi wants hundreds, conjugate gradient a few hundred,
+  // multigrid eight.
+  //
+  // MULTIGRID constrains the mesh: every per-core interior extent must be a
+  // power of two. `extract_scene.py --target_shape` is how that is arranged,
+  // and the solver raises with the `grid_size` to use if it is not. Note also
+  // that `cores_z` is pinned to 1 here, so the vertical is never split and
+  // the hierarchy depth is set by the global extent in z.
+  enum Solver {
+    JACOBI = 0;
+    CONJUGATE_GRADIENT = 1;
+    MULTIGRID = 2;
+  }
+  optional Solver solver = 24 [default = JACOBI];
+
   // -- Numerics -------------------------------------------------------------
 
   // Convective CFL used to pick the time step, based on the inflow speed.
