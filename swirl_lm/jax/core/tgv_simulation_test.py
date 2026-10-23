@@ -42,6 +42,7 @@ The step function is JIT-compiled for performance.
 
 import logging as pylog
 import os
+import shutil
 import tempfile
 
 from absl.testing import absltest
@@ -60,6 +61,7 @@ from swirl_lm.jax.boundary_condition import boundary_condition_utils
 from swirl_lm.jax.core import driver as driver_lib
 from swirl_lm.jax.core import simulation as simulation_lib
 from swirl_lm.jax.equations import common
+from swirl_lm.jax.io import checkpoint as checkpoint_lib
 from swirl_lm.jax.io import visualization as visualization_lib
 from swirl_lm.jax.utility import global_layout
 from swirl_lm.jax.utility import stretched_grid
@@ -1132,6 +1134,195 @@ class StrengthenDtypesTest(absltest.TestCase):
           getattr(value, 'weak_type', False), f'{key} is still weakly typed'
       )
       self.assertEqual(value.dtype, state[key].dtype)
+
+
+def _mark_hook_fired(states, additional_states):
+  """A one-shot pre-process hook that records the fact that it ran."""
+  del states
+  return {'hook_fired': jnp.ones_like(additional_states['hook_fired'])}
+
+
+class ResolveInitialStepTest(absltest.TestCase):
+  """Where a run starts counting steps."""
+
+  def test_a_fresh_run_starts_at_zero(self):
+    self.assertEqual(driver_lib._resolve_initial_step(None, None, None), 0)
+
+  def test_a_restart_takes_the_step_the_checkpoint_records(self):
+    self.assertEqual(
+        driver_lib._resolve_initial_step({'step': 500}, None, '/ckpt'), 500
+    )
+
+  def test_an_explicit_override_wins_over_the_checkpoint(self):
+    self.assertEqual(
+        driver_lib._resolve_initial_step({'step': 500}, 20, '/ckpt'), 20
+    )
+
+  def test_an_override_applies_without_a_checkpoint(self):
+    self.assertEqual(driver_lib._resolve_initial_step(None, 20, None), 20)
+
+  def test_a_checkpoint_without_a_step_warns_and_starts_at_zero(self):
+    with self.assertLogs(level='WARNING') as logs:
+      step = driver_lib._resolve_initial_step({}, None, '/ckpt')
+
+    self.assertEqual(step, 0)
+    self.assertIn('records no step', '\n'.join(logs.output))
+
+  def test_a_negative_override_is_rejected(self):
+    with self.assertRaisesRegex(ValueError, 'non-negative'):
+      driver_lib._resolve_initial_step(None, -1, None)
+
+  def test_a_negative_recorded_step_is_rejected(self):
+    with self.assertRaisesRegex(ValueError, 'negative step'):
+      driver_lib._resolve_initial_step({'step': -5}, None, '/ckpt')
+
+  def test_a_non_integer_recorded_step_is_rejected(self):
+    with self.assertRaisesRegex(ValueError, 'not an integer'):
+      driver_lib._resolve_initial_step({'step': 'later'}, None, '/ckpt')
+
+
+class DriverRestartTest(absltest.TestCase):
+  """Restarting continues the step index instead of counting again from zero.
+
+  Each test here covers something that was silently wrong while it did count
+  again from zero, and all three run into a single output directory, because
+  chaining sessions into one directory is the case that has to work.
+  """
+
+  def _make_params(self, preprocess_step_id: int | None = None):
+    config = parameters_pb2.SwirlLMParameters()
+    text_format.Parse(_DRIVER_TGV_CONFIG_111, config)
+    if preprocess_step_id is not None:
+      opt = config.pre_post_process_info.from_config
+      opt.apply_preprocess = True
+      opt.preprocess_step_id = preprocess_step_id
+      opt.preprocess_periodic = False
+    return parameters_lib.SwirlLMParameters(config)
+
+  def _out_dir(self) -> str:
+    """A scratch output directory. `create_tempdir` needs absl flags parsed."""
+    out = tempfile.mkdtemp()
+    self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+    return out
+
+  def _checkpoints(self, directory: str) -> list[str]:
+    return sorted(
+        name for name in os.listdir(directory) if name.endswith('.zarr')
+    )
+
+  def _run_leg(self, params, out, restart_from=None, **kwargs):
+    """Runs four steps in two cycles, saving a checkpoint after each."""
+    return driver_lib.run_simulation(
+        params=params,
+        init_fn=_tgv_driver_init_fn,
+        num_steps=4,
+        num_steps_per_cycle=2,
+        restart_from=restart_from,
+        checkpoint_dir=out,
+        checkpoint_interval=1,
+        **kwargs,
+    )
+
+  def test_the_second_leg_numbers_its_checkpoints_past_the_first(self):
+    params = self._make_params()
+    out = self._out_dir()
+
+    self._run_leg(params, out)
+    self.assertEqual(
+        self._checkpoints(out), ['step_000002.zarr', 'step_000004.zarr']
+    )
+
+    self._run_leg(
+        params, out, restart_from=os.path.join(out, 'step_000004.zarr')
+    )
+
+    # 2 and 4 are still there: the second leg added to the output of the run
+    # it resumed from rather than overwriting it.
+    self.assertEqual(
+        self._checkpoints(out),
+        [
+            'step_000002.zarr',
+            'step_000004.zarr',
+            'step_000006.zarr',
+            'step_000008.zarr',
+        ],
+    )
+
+  def test_the_step_index_and_the_simulated_time_agree(self):
+    params = self._make_params()
+    out = self._out_dir()
+
+    self._run_leg(params, out)
+    state = self._run_leg(
+        params, out, restart_from=os.path.join(out, 'step_000004.zarr')
+    )
+
+    # `simulation_time` is restored with the rest of the state, so it always
+    # continued across the join; the step index is what did not.
+    np.testing.assert_allclose(
+        float(state[driver_lib.TIME_VARNAME]), 8 * params.dt, rtol=1e-6
+    )
+    _, metadata = checkpoint_lib.load(os.path.join(out, 'step_000008.zarr'))
+    self.assertEqual(int(metadata['step']), 8)
+    np.testing.assert_allclose(
+        float(metadata['sim_time']), 8 * params.dt, rtol=1e-6
+    )
+
+  def test_a_one_shot_hook_the_run_has_passed_does_not_fire_again(self):
+    # The hook is keyed to step 2, which the first leg passes. A second leg
+    # counting from zero reached step 2 a second time and re-ran it.
+    params = self._make_params(preprocess_step_id=2)
+    params.preprocessing_states_update_fn = _mark_hook_fired
+    out = self._out_dir()
+
+    state = self._run_leg(
+        params, out, additional_states={'hook_fired': jnp.float32(0.0)}
+    )
+    self.assertEqual(
+        float(state['hook_fired']),
+        1.0,
+        'the hook never fired, so the second leg proves nothing',
+    )
+
+    state = self._run_leg(
+        params,
+        out,
+        restart_from=os.path.join(out, 'step_000004.zarr'),
+        additional_states={'hook_fired': jnp.float32(0.0)},
+    )
+    self.assertEqual(
+        float(state['hook_fired']),
+        0.0,
+        'the one-shot hook keyed to step 2 fired again after restarting at 4',
+    )
+
+  def test_a_restart_that_runs_nothing_leaves_its_checkpoint_alone(self):
+    params = self._make_params()
+    out = self._out_dir()
+
+    self._run_leg(params, out)
+    source = os.path.join(out, 'step_000004.zarr')
+    _, before = checkpoint_lib.load(source)
+
+    # Fewer steps than one cycle, so no cycle runs and nothing is computed.
+    # The final save would name the file just read, and would write back a
+    # state whose unrestored fields came from `init_fn`.
+    driver_lib.run_simulation(
+        params=params,
+        init_fn=_tgv_driver_init_fn,
+        num_steps=1,
+        num_steps_per_cycle=2,
+        restart_from=source,
+        checkpoint_dir=out,
+        checkpoint_interval=1,
+    )
+
+    self.assertEqual(
+        self._checkpoints(out), ['step_000002.zarr', 'step_000004.zarr']
+    )
+    _, after = checkpoint_lib.load(source)
+    self.assertEqual(int(after['step']), int(before['step']))
+    self.assertEqual(float(after['sim_time']), float(before['sim_time']))
 
 
 if __name__ == '__main__':

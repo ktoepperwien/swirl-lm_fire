@@ -78,14 +78,16 @@ Usage example (TGV with checkpointing):
 
 Usage example (restart from a previous checkpoint):
   ```python
-  # Restart from step 500 and run 500 more steps.
+  # Restart from step 500 and run 500 more, numbered 500-1000. `num_steps`
+  # counts the steps this call runs, so the same directory can hold both
+  # legs of a chained run.
   states = driver.run_simulation(
       params=params,
       init_fn=tgv_init_fn,
       num_steps=500,
       mesh=mesh,
       restart_from='/tmp/tgv_run/step_000500.zarr',
-      checkpoint_dir='/tmp/tgv_run_continued',
+      checkpoint_dir='/tmp/tgv_run',
       checkpoint_interval=100,
   )
   ```
@@ -875,6 +877,68 @@ def _restore_from_checkpoint(
   return metadata
 
 
+def _resolve_initial_step(
+    metadata: Mapping[str, object] | None,
+    restart_step: int | None,
+    restart_from: str | None,
+) -> int:
+  """Returns the step index the cycle loop should start counting from.
+
+  A restarted run continues the step index of the checkpoint it resumed from
+  rather than counting again from zero. Three things depend on that: the
+  checkpoint filename, which would otherwise overwrite the output of the run
+  being continued; a one-shot hook keyed to `preprocess_step_id` or
+  `postprocess_step_id`, which would otherwise fire a second time; and
+  `TIME_VARNAME`, which is restored with the rest of the state, so a step
+  index starting from zero would disagree with the simulated time beside it.
+
+  Args:
+    metadata: The checkpoint metadata, or None when this is not a restart.
+    restart_step: An explicit override, used verbatim when given. Pass it to
+      renumber deliberately, or to continue a checkpoint that records no step.
+    restart_from: The checkpoint path, for diagnostics.
+
+  Returns:
+    The step index of the first step this call will run.
+
+  Raises:
+    ValueError: If `restart_step` is negative, or the checkpoint records a
+      step that is not a non-negative integer.
+  """
+  if restart_step is not None:
+    if restart_step < 0:
+      raise ValueError(
+          f'restart_step must be non-negative, got {restart_step}.'
+      )
+    return restart_step
+
+  if metadata is None:
+    return 0
+
+  step = metadata.get('step')
+  if step is None:
+    logging.warning(
+        'Checkpoint %s records no step, so the step index starts at 0. Its '
+        'checkpoints will overwrite those of the run being resumed; pass '
+        '`restart_step` to say where to continue from.',
+        restart_from,
+    )
+    return 0
+
+  try:
+    step = int(step)
+  except (TypeError, ValueError) as e:
+    raise ValueError(
+        f'Checkpoint {restart_from} records step {step!r}, which is not an '
+        'integer.'
+    ) from e
+  if step < 0:
+    raise ValueError(
+        f'Checkpoint {restart_from} records a negative step, {step}.'
+    )
+  return step
+
+
 def _save_checkpoint(
     states: dict[str, ScalarField],
     grid_params: gp_lib.GridParametrization,
@@ -925,6 +989,7 @@ def run_simulation(
     additional_states: ScalarFieldMap | None = None,
     restart_from: str | None = None,
     restart_fields: Sequence[str] | None = None,
+    restart_step: int | None = None,
     num_steps_per_cycle: int = 1,
     checkpoint_dir: str | None = None,
     checkpoint_interval: int = 0,
@@ -951,7 +1016,9 @@ def run_simulation(
       `logical_coordinates` is a `(cx_i, cy_i, cz_i)` tuple identifying the
       device's position in the computational grid, matching TF's
       `init_fn(replica_id, coordinates)` pattern.
-    num_steps: Total number of time steps to run.
+    num_steps: Number of time steps this call runs. On a restart these are
+      counted on top of the checkpoint's step, not from zero, so the step
+      index continues across a chain of runs.
     mesh: Optional JAX mesh for device topology. If None, it is created
       automatically from `params.cx/cy/cz` via `create_mesh(params)`.
     additional_states: Optional helper variables (boundary conditions, stretched
@@ -962,6 +1029,9 @@ def run_simulation(
       prognostic state, the accumulated simulation time and the boundary
       condition states are restored; derived and grid-derived variables are
       recomputed from this configuration instead.
+    restart_step: The step index to continue from, overriding the one recorded
+      in the checkpoint. Also useful for a checkpoint written before the step
+      was recorded.
     num_steps_per_cycle: Number of time steps per cycle. Higher values reduce
       Python loop overhead but delay IO. Default is 1.
     checkpoint_dir: Directory for zarr checkpoints. If None, no checkpointing.
@@ -1030,8 +1100,9 @@ def run_simulation(
   # Override with checkpoint data if restarting. This runs before the
   # shard_map specs are derived from `state`, so the restored arrays are what
   # those specs describe.
+  restart_metadata = None
   if restart_from is not None:
-    _restore_from_checkpoint(
+    restart_metadata = _restore_from_checkpoint(
         state, restart_from, params, essential_keys, restart_fields
     )
 
@@ -1203,16 +1274,23 @@ def run_simulation(
   # Compute cycle counts. TF uses exact `num_steps * num_cycles` — no remainder.
   num_cycles = num_steps // max(num_steps_per_cycle, 1)
 
+  initial_step = _resolve_initial_step(
+      restart_metadata, restart_step, restart_from
+  )
+  final_step = initial_step + num_cycles * num_steps_per_cycle
+
   logging.info(
-      'Simulation: %d total steps, %d steps/cycle, %d cycles, mesh=%s.',
+      'Simulation: %d steps (%d -> %d), %d steps/cycle, %d cycles, mesh=%s.',
       num_steps,
+      initial_step,
+      final_step,
       num_steps_per_cycle,
       num_cycles,
       dict(mesh.shape),
   )
 
   # Main simulation loop (Python cycle loop).
-  steps_completed = 0
+  steps_completed = initial_step
 
   for cycle_idx in range(num_cycles):
     init_step_id = jnp.int32(steps_completed)
@@ -1258,7 +1336,7 @@ def run_simulation(
           'Cycle %d: step %d / %d  CFL=%.4f  compute_time=%.2fs',
           cycle_idx,
           steps_completed,
-          num_steps,
+          final_step,
           cfl,
           compute_time,
       )
@@ -1282,8 +1360,20 @@ def run_simulation(
   # cycle loop runs `num_steps // num_steps_per_cycle` cycles, so the two
   # differ whenever that division has a remainder, and `num_steps` would
   # label the file with steps that were never taken.
-  if checkpoint_dir:
+  #
+  # One case is skipped: a restart that ran no cycle, where the name is the
+  # step of the checkpoint just read. Nothing was computed, and rewriting it
+  # with a state whose unrestored fields came from `init_fn` would lose what
+  # the file holds.
+  resumed_without_stepping = (
+      restart_from is not None and steps_completed == initial_step
+  )
+  if checkpoint_dir and not resumed_without_stepping:
     _save_checkpoint(state, gp, steps_completed, checkpoint_dir)
 
-  logging.info('Simulation completed after %d steps.', steps_completed)
+  logging.info(
+      'Simulation completed: %d steps run, now at step %d.',
+      steps_completed - initial_step,
+      steps_completed,
+  )
   return state
