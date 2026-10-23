@@ -6,6 +6,7 @@
 #   SCENE=... CORES_X=4 ./run_wui.sh               # four devices
 #   JAX_PLATFORMS=cuda SCENE=... CORES_X=4 ./run_wui.sh
 #   WIND=10 SCENE=... ./run_wui.sh                 # a fire-weather wind
+#   RESIDUAL=1 SCENE=... ./run_wui.sh              # report the pressure solve
 #   PYTHON=/path/to/python ./run_wui.sh
 #
 # The mesh comes from the scene file, not from the case file; re-run
@@ -36,6 +37,14 @@ NUM_CYCLES="${NUM_CYCLES:-40}"
 NUM_STEPS="${NUM_STEPS:-500}"
 CHECKPOINT_INTERVAL="${CHECKPOINT_INTERVAL:-1}"
 PYTHON="${PYTHON:-python}"
+
+# `jax.debug.print` needs a host backend to call back into, so asking for the
+# residual on GPU also asks for the CPU one. Appending rather than replacing:
+# dropping cuda here would silently move the whole run onto the host.
+if [[ -n "${RESIDUAL:-}" && "${JAX_PLATFORMS:-}" == *"cuda"* \
+      && "${JAX_PLATFORMS}" != *"cpu"* ]]; then
+  JAX_PLATFORMS="${JAX_PLATFORMS},cpu"
+fi
 
 export JAX_PLATFORMS="${JAX_PLATFORMS:-cpu}"
 
@@ -74,6 +83,7 @@ ARGS=(
 )
 [[ -n "${SCENE:-}" ]] && ARGS+=(--scene_path="${SCENE}")
 [[ -n "${WIND:-}" ]] && ARGS+=(--inflow_speed="${WIND}")
+[[ -n "${RESIDUAL:-}" ]] && ARGS+=(--log_poisson_residual)
 
 mkdir -p "${OUTPUT}"
 cd "${ROOT}"

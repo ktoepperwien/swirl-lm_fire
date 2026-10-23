@@ -81,6 +81,15 @@ _DUMP_CONFIG = flags.DEFINE_bool(
     True,
     'Write the derived solver configuration next to the checkpoints.',
 )
+_LOG_POISSON_RESIDUAL = flags.DEFINE_bool(
+    'log_poisson_residual',
+    False,
+    'Report what the pressure solve achieved, once per sub-iteration: the '
+    'relative residual `||A dp - b|| / ||b||`, and what the correction did to '
+    'the continuity residual. Off by default: the switch is read while '
+    'tracing, so unset, neither the extra operator application nor the host '
+    'callback that prints it enters the compiled graph at all.',
+)
 
 FLAGS = flags.FLAGS
 
@@ -142,6 +151,7 @@ def main(_):
   _check_device_count(case)
   simulation = wui.Wui(case)
   params = simulation.params
+  params.log_poisson_residual = _LOG_POISSON_RESIDUAL.value
   params.source_update_fn_lib = simulation.source_term_update_fn()
   logging.info('%s', simulation.summary())
 
