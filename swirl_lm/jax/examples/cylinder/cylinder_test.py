@@ -34,6 +34,7 @@ from swirl_lm.jax.core import driver as driver_lib
 from swirl_lm.jax.examples.cylinder import cylinder
 from swirl_lm.jax.examples.cylinder import cylinder_main
 from swirl_lm.jax.examples.cylinder import cylinder_pb2
+from swirl_lm.jax.linalg import multigrid_solver
 from swirl_lm.jax.utility import global_layout
 from swirl_lm.jax.utility import signed_distance as sdf
 
@@ -197,7 +198,7 @@ class FarFieldTest(absltest.TestCase):
 
   def test_the_density_filter_is_off_for_constant_density(self):
     # `drho` is identically zero here, so filtering it is pure waste and
-    # makes XLA constant-fold the stencil over the whole grid. See MEMORY.md.
+    # makes XLA constant-fold the stencil over the whole grid.
     sim = cylinder.Cylinder(_small_case())
     self.assertEqual(sim.params.pressure.num_d_rho_filter, 0)
 
@@ -223,6 +224,102 @@ class KernelWidthTest(parameterized.TestCase):
     # hard-coded width of 4 in convection.py cannot divide.
     with self.assertRaisesRegex(ValueError, 'not divisible'):
       cylinder.Cylinder(_small_case(cells_per_diameter=9))
+
+
+class MultigridMeshTest(parameterized.TestCase):
+  """The case admits a multigrid hierarchy, and says so when it cannot.
+
+  Coarsening is per axis, so the four-cell span no longer decides the depth.
+  These tests pin that down at the case level, because the alternative --
+  widening the span to make the old all-axes rule accept the mesh -- changes
+  the domain and so changes the Strouhal number the case exists to measure.
+  """
+
+  def _plan(self, **overrides):
+    case = _small_case(solver=cylinder_pb2.CylinderCase.MULTIGRID, **overrides)
+    return cylinder.Cylinder(case).multigrid_plan
+
+  def test_the_published_mesh_admits_a_hierarchy(self):
+    # The real validation mesh, 640 x 400 x 4, which the power-of-two rule
+    # refused outright. x and y halve four times; the span never does.
+    case = cylinder_pb2.CylinderCase(
+        solver=cylinder_pb2.CylinderCase.MULTIGRID
+    )
+    sim = cylinder.Cylinder(case)
+    self.assertEqual((sim.fx, sim.fy, sim.fz), (640, 400, 4))
+    self.assertEqual(sim.multigrid_plan, [(0, 1)] * 4)
+
+  def test_the_span_is_never_coarsened(self):
+    for axes in self._plan():
+      self.assertNotIn(2, axes)
+
+  def test_an_axis_drops_out_when_it_can_no_longer_be_halved(self):
+    # y stops one level before x does, which is the whole point of
+    # coarsening per axis rather than all three together.
+    self.assertEqual(self._plan(), [(0, 1), (0, 1), (0,)])
+
+  def test_the_other_solvers_record_no_plan(self):
+    for solver in (
+        cylinder_pb2.CylinderCase.JACOBI,
+        cylinder_pb2.CylinderCase.CONJUGATE_GRADIENT,
+    ):
+      sim = cylinder.Cylinder(_small_case(solver=solver))
+      self.assertEmpty(sim.multigrid_plan)
+
+  def test_a_grid_no_axis_of_which_can_be_halved_is_refused(self):
+    # Every axis is at the floor: halving x or y would take the global
+    # extent below the coarsest shape, and the span below the per-core one.
+    with self.assertRaisesRegex(ValueError, 'cannot halve a single axis'):
+      self._plan(
+          cells_per_diameter=8,
+          length_upstream=0.5,
+          length_downstream=0.5,
+          half_width=0.5,
+      )
+
+  def test_the_refusal_names_a_case_parameter_not_a_solver_field(self):
+    with self.assertRaisesRegex(ValueError, '`cells_per_diameter`'):
+      self._plan(
+          cells_per_diameter=8,
+          length_upstream=0.5,
+          length_downstream=0.5,
+          half_width=0.5,
+      )
+
+  def test_the_generated_coarsest_shape_is_the_solver_bound(self):
+    # The literal used to be written out by hand in two places. If it drifts
+    # from what the hierarchy enforces, the plan computed here stops
+    # describing the hierarchy the solver builds.
+    sim = cylinder.Cylinder(
+        _small_case(solver=cylinder_pb2.CylinderCase.MULTIGRID)
+    )
+    extent = multigrid_solver._MIN_COARSEST_EXTENT  # pylint: disable=protected-access
+    self.assertIn(
+        f'coarsest_subgrid_shape {{ dim_0: {extent} dim_1: {extent} '
+        f'dim_2: {extent} }}',
+        sim.config_text(),
+    )
+
+  def test_the_plan_matches_what_the_solver_would_build(self):
+    # The case must not reimplement the rule, only call it.
+    sim = cylinder.Cylinder(
+        _small_case(solver=cylinder_pb2.CylinderCase.MULTIGRID)
+    )
+    interior = (sim.fx, sim.fy, sim.fz)
+    extent = multigrid_solver._MIN_COARSEST_EXTENT  # pylint: disable=protected-access
+    self.assertEqual(
+        sim.multigrid_plan,
+        multigrid_solver._coarsening_plan(  # pylint: disable=protected-access
+            interior, (1, 1, 1), (extent,) * 3
+        ),
+    )
+
+  def test_the_summary_reports_the_hierarchy(self):
+    sim = cylinder.Cylinder(
+        _small_case(solver=cylinder_pb2.CylinderCase.MULTIGRID)
+    )
+    self.assertIn('multigrid over 4 levels', sim.summary())
+    self.assertIn('coarsening xy, xy, x', sim.summary())
 
 
 class GeometryTest(absltest.TestCase):
