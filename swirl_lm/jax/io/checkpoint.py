@@ -97,26 +97,6 @@ def _data_axis_dims(
   return tuple(grid_params.data_axis_order)
 
 
-def _to_numpy(arr: jax.Array) -> np.ndarray:
-  """Materializes a possibly-sharded state array on the host.
-
-  States are global arrays sharded over the device mesh. Within a single
-  process all shards are addressable and `np.asarray` gathers them. In a
-  multi-process job (multi-host TPU pod or multi-node GPU) 3D fields span
-  non-addressable devices, so an explicit cross-process gather is needed.
-  This is a collective: every process must call it for every variable.
-
-  Args:
-    arr: A state array, sharded or not.
-
-  Returns:
-    The full (global) value as a numpy array.
-  """
-  if jax.process_count() > 1 and not getattr(arr, 'is_fully_addressable', True):
-    return np.asarray(multihost_utils.process_allgather(arr, tiled=True))
-  return np.asarray(arr)
-
-
 # Attribute names recording, per variable, how it was laid out on the way out,
 # so that restart never has to infer it. Inference by length is genuinely
 # ambiguous: a boundary condition state's thin normal axis has extent
@@ -227,14 +207,14 @@ def save(
   coords = _interior_coords(grid_params, exclude_halos)
   dims = _data_axis_dims(grid_params)
 
-  # `_to_numpy` is a collective under multi-process, so every process must
+  # `to_host_array` is a collective under multi-process, so every process must
   # walk the same keys in the same order, even though only one writes.
   keys = sorted(fields if fields is not None else states.keys())
   data_vars = {}
   for name in keys:
     data_vars[name] = _as_data_array(
-        name, _to_numpy(states[name]), dims, coords, grid_params,
-        exclude_halos,
+        name, global_layout.to_host_array(states[name]), dims, coords,
+        grid_params, exclude_halos,
     )
 
   # In a multi-process job every process holds the same gathered data; only

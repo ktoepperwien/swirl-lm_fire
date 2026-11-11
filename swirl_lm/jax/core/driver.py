@@ -169,12 +169,31 @@ def create_mesh(
 
   Returns:
     A JAX Mesh suitable for shard_map execution.
+
+  Raises:
+    ValueError: If a multi-process job's decomposition does not cover every
+      device.
   """
   gp = params.grid_params
   # Reorder (cx, cy, cz) from (x, y, z) order to data_axis_order so that
   # each mesh axis name matches its partition count.
   mesh_shape = gp.to_data_axis_order(gp.cx, gp.cy, gp.cz)
   num_devices = gp.cx * gp.cy * gp.cz
+  # Across processes an unused device is not merely wasted. The prefix can
+  # exclude every device of some process, which then holds no shard of the
+  # state yet still enters the compiled cycle, and the job hangs instead of
+  # failing -- the worst outcome in a batch queue. Refuse it.
+  if jax.process_count() > 1 and jax.device_count() != num_devices:
+    raise ValueError(
+        f'computation_shape is {gp.cx}x{gp.cy}x{gp.cz} = {num_devices}, but '
+        f'this {jax.process_count()}-process job has {jax.device_count()} '
+        f'{jax.default_backend()} devices '
+        f'({jax.local_device_count()} per process). A multi-process run must '
+        'use every device: set cores_x/cores_y/cores_z so their product is '
+        f'{jax.device_count()}, or launch '
+        f'{num_devices // max(jax.local_device_count(), 1)} '
+        f'task(s) of {jax.local_device_count()} device(s).'
+    )
   # Taking a prefix of `jax.devices()` means a computation_shape smaller than
   # the machine runs happily on a subset and leaves the rest idle, with
   # nothing to show for it but the wall-clock time. Say so.
