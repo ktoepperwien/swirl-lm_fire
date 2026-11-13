@@ -61,9 +61,16 @@ join into a single job before any of them touches a device. `cylinder_main.py`
 joins on startup, so the launcher only has to start the tasks under `srun`,
 which is what lets `jax.distributed.initialize()` find its peers.
 
-The decomposition still comes from the config file, so `cores_x * cores_y *
-cores_z` must equal the total number of tasks; a mismatch is refused rather
-than left to hang, because a process holding no part of the state would still
+How the devices are spread over processes is a separate choice from the
+decomposition. JAX pins each Slurm task to one GPU, so `--ntasks-per-node=4`
+gives four single-device processes; `--ntasks-per-node=1` instead gives one
+process holding all four, which keeps a node's collectives inside that process
+and leaves only the hop between nodes crossing a process boundary. Both run the
+same decomposition, and on this mesh the second is the cheaper of the two.
+
+The decomposition itself comes from the config file, so `cores_x * cores_y *
+cores_z` must equal the total number of *devices*; a mismatch is refused to
+avoid stalling, because a process holding no part of the state would still
 enter the compiled cycle. Legal splits of this mesh are `cores_x` in
 `{1,2,4,5,8}` and `cores_y` in `{1,2,4,5}`, with `cores_z: 1` while
 `spanwise_cells: 4`, so eight devices can be arranged as `4x2x1`, `2x4x1` or
@@ -89,13 +96,17 @@ it from that directory.
 #   sbatch --nodes=1 --ntasks-per-node=1 sbatch_cylinder.sh   # single device
 #   sbatch --nodes=1 --ntasks-per-node=4 sbatch_cylinder.sh   # one node
 #   sbatch --nodes=2 --ntasks-per-node=4 sbatch_cylinder.sh   # two nodes
+#   sbatch --nodes=2 --ntasks-per-node=1 sbatch_cylinder.sh   # two, one proc each
 #
 # The decomposition comes from the config file, not from here: set
-# `cores_x/cores_y/cores_z` so their product equals nodes x ntasks-per-node.
+# `cores_x/cores_y/cores_z` so their product equals the device count, which is
+# nodes x gpus-per-node however the tasks are arranged.
 # A mismatch is refused by `driver.create_mesh` rather than left to hang.
 #
-# One task per GPU. JAX reads SLURM_LOCALID to pick the device, so every task
-# may see all four and no CUDA_VISIBLE_DEVICES juggling is needed.
+# One task per GPU: JAX reads SLURM_LOCALID to pick the device, so every task
+# may see all four and no CUDA_VISIBLE_DEVICES juggling is needed. One task per
+# *node* works too and claims all four, which keeps a node's collectives inside
+# one process and leaves only the hop between nodes crossing processes.
 #
 #SBATCH --job-name=cylinder
 #SBATCH --constraint=gpu
@@ -192,9 +203,8 @@ The pip `nvidia-*-cu12` wheels ship their own CUDA, and NERSC warns that
 loading the `cudatoolkit` module on top of a conda CUDA install conflicts with
 it, so the module is unloaded. And Slingshot-11 (Cassini) NICs do not speak IB
 verbs, so without the NCCL OFI plugin NCCL falls back to TCP sockets: correct,
-and several times slower. Hence `NCCL_DEBUG=INFO`, which reports the transport
-that was actually selected -- a communicator that starts proves nothing,
-because the socket fallback starts perfectly.
+and several times slower. Use `NCCL_DEBUG=INFO`, which reports the transport
+that was actually selected.
 
 ## Validating the simulation
 

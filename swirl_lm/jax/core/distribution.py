@@ -49,6 +49,29 @@ _PROCESS_COUNT_VARS = (
 _OVERRIDE_VAR = 'SWIRL_LM_MULTIPROCESS'
 
 
+def _local_device_ids() -> list[int] | None:
+  """Devices this process claims, or None to leave the choice to JAX.
+
+  JAX pins a detected Slurm task to `[SLURM_LOCALID]`, which idles every GPU
+  but one when a node runs a single task. Claiming the node's full list
+  instead keeps each node's collectives inside one process, so that only the
+  hop between nodes crosses a process boundary.
+
+  Read from the environment, since any call that would enumerate devices
+  initializes the backend and so cannot precede `initialize`.
+  """
+  try:
+    tasks = int(os.environ['SLURM_NTASKS'])
+    nodes = int(os.environ['SLURM_NNODES'])
+    gpus = int(os.environ['SLURM_GPUS_ON_NODE'])
+  except (KeyError, ValueError):
+    return None
+  # One task per node, and more than one device for it to hold.
+  if nodes < 1 or tasks != nodes or gpus < 2:
+    return None
+  return list(range(gpus))
+
+
 def launcher_process_count() -> int:
   """Returns the process count this job was launched with, 1 if unlaunched.
 
@@ -81,12 +104,19 @@ def initialize() -> None:
   if override != '1' and launcher_process_count() <= 1:
     return
 
-  # No arguments: the coordinator address, the process count and this
-  # process's id are all derived from the launcher's environment. On Slurm the
-  # address is the first host of `SLURM_STEP_NODELIST` with a port taken from
-  # the job id, and `local_device_ids` becomes `[SLURM_LOCALID]`, which is why
-  # one task per GPU needs no `CUDA_VISIBLE_DEVICES`.
-  jax.distributed.initialize()
+  # The coordinator address, the process count and this process's id are all
+  # derived from the launcher's environment. On Slurm the address is the first
+  # host of `SLURM_STEP_NODELIST` with a port taken from the job id, and
+  # `local_device_ids` defaults to `[SLURM_LOCALID]`, which is why one task per
+  # GPU needs no `CUDA_VISIBLE_DEVICES`.
+  local_device_ids = _local_device_ids()
+  if local_device_ids is not None:
+    logging.info(
+        'One task per node: claiming local devices %s rather than the one '
+        'SLURM_LOCALID names.',
+        local_device_ids,
+    )
+  jax.distributed.initialize(local_device_ids=local_device_ids)
 
   logging.info(
       'Joined cluster as process %d of %d, holding %d of %d %s devices.',
