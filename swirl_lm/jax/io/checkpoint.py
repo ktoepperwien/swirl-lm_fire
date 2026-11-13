@@ -53,6 +53,7 @@ Usage:
 
 from collections.abc import Sequence
 
+from absl import logging
 import jax
 from jax.experimental import multihost_utils
 import numpy as np
@@ -220,6 +221,8 @@ def save(
   # In a multi-process job every process holds the same gathered data; only
   # one of them may write to the store.
   if jax.process_index() == 0:
+    # Every process returned from gather
+    logging.info('Gathered %d field(s), writing %s', len(data_vars), path)
     ds = xr.Dataset(data_vars)
     ds.attrs['format_version'] = FORMAT_VERSION
     ds.attrs['step'] = step

@@ -921,6 +921,10 @@ def _save_checkpoint(
   # unchanging. Its *fields* -- the masks and the signed distance -- are
   # ordinary 3D states and are kept, because they are what post-processing
   # uses to cut the body out of a plot.
+
+  # Logged before the write as well as after to detect potentially  stalled
+  # `to_zarr`.
+  logging.info('Writing checkpoint: %s', ckpt_path)
   checkpoint_lib.save(
       states,
       grid_params,
@@ -1233,6 +1237,10 @@ def run_simulation(
   # Main simulation loop (Python cycle loop).
   steps_completed = 0
 
+  # Step of the most recent checkpoint, so the final save can skip a store the
+  # last cycle already wrote.
+  last_checkpoint_step = -1
+
   for cycle_idx in range(num_cycles):
     init_step_id = jnp.int32(steps_completed)
 
@@ -1289,6 +1297,7 @@ def run_simulation(
         and (cycle_idx + 1) % checkpoint_interval == 0
     ):
       _save_checkpoint(state, gp, steps_completed, checkpoint_dir)
+      last_checkpoint_step = steps_completed
 
     io_time = time.time() - io_start
     logging.info(
@@ -1297,11 +1306,13 @@ def run_simulation(
         io_time,
     )
 
-  # Save final checkpoint. `steps_completed` rather than `num_steps`: the
-  # cycle loop runs `num_steps // num_steps_per_cycle` cycles, so the two
-  # differ whenever that division has a remainder, and `num_steps` would
-  # label the file with steps that were never taken.
-  if checkpoint_dir:
+  # Save final checkpoint, unless the last cycle already wrote this step.
+  # `checkpoint_interval` dividing the cycle count would otherwise write the
+  # same store twice. Using `steps_completed` rather than `num_steps`: the cycle
+  # loop runs `num_steps // num_steps_per_cycle` cycles, so the two differ
+  # whenever that division has a remainder, and `num_steps` would label the file
+  # with steps that were never taken.
+  if checkpoint_dir and steps_completed != last_checkpoint_step:
     _save_checkpoint(state, gp, steps_completed, checkpoint_dir)
 
   logging.info('Simulation completed after %d steps.', steps_completed)
