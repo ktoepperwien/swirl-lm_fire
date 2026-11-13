@@ -76,18 +76,16 @@ is wrong.
 
 ### A batch script for NERSC Perlmutter
 
-Batch scripts are site-specific, so none is shipped here. The one below runs
-this case on Perlmutter; save it as `sbatch_cylinder.sh` beside
-`run_cylinder.sh`. Bring a new machine up one variable at a time: one task on
-one GPU, then four tasks on one node, then two nodes. The single-node
-multi-process step is the one not to skip, since it separates a bug in this
-code from a misconfigured network, and those two look identical.
+Note: Batch scripts are site-specific. Example below runs this case on
+Perlmutter; save it as `sbatch_cylinder.sh` beside `run_cylinder.sh` and submit
+it from that directory.
 
 ```bash
 #!/bin/bash
 #
 # Runs the cylinder case across several GPU nodes on Perlmutter.
 #
+#   cd swirl_lm/jax/examples/cylinder
 #   sbatch --nodes=1 --ntasks-per-node=1 sbatch_cylinder.sh   # single device
 #   sbatch --nodes=1 --ntasks-per-node=4 sbatch_cylinder.sh   # one node
 #   sbatch --nodes=2 --ntasks-per-node=4 sbatch_cylinder.sh   # two nodes
@@ -112,7 +110,15 @@ code from a misconfigured network, and those two look identical.
 
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Slurm runs a *copy* of this script out of its spool directory, so
+# `BASH_SOURCE` points there and not at the case. `sbatch` therefore has to be
+# invoked from this directory, which is what SLURM_SUBMIT_DIR then reports.
+HERE="$(cd "${SLURM_SUBMIT_DIR:-$(dirname "${BASH_SOURCE[0]}")}" && pwd)"
+if [[ ! -f "${HERE}/run_cylinder.sh" ]]; then
+  echo "${HERE} holds no run_cylinder.sh: submit from the cylinder example" \
+       "directory." >&2
+  exit 1
+fi
 ROOT="$(cd "${HERE}/../../../.." && pwd)"
 
 export JAX_PLATFORMS=cuda
@@ -154,10 +160,27 @@ export NCCL_DEBUG_SUBSYS="${NCCL_DEBUG_SUBSYS:-INIT,NET}"
 export CXI_FORK_SAFE=1
 export CXI_FORK_SAFE_HP=1
 
+# ---------------------------------------------------------------------------
+# Case setup. The runner uses the conjugate gradient config by default.
+# `cores_x/cores_y/cores_z` can be changed in the config file. Use absolute
+# paths only. 40 cycles of 200 steps is the measured
+# reference: 8000 steps, whose second half gives the 4000 Strouhal samples.
+# ---------------------------------------------------------------------------
+export CONFIG="${CONFIG:-${HERE}/cylinder_multigrid.pbtxt}"
+export NUM_CYCLES="${NUM_CYCLES:-40}"
+export NUM_STEPS="${NUM_STEPS:-200}"
+# In cycles, not steps. The final checkpoint is written regardless.
+export CHECKPOINT_INTERVAL="${CHECKPOINT_INTERVAL:-10}"
+# Per job, and on storage every node can see: each bring-up step writes its own
+# `wake_probe.npy`, and that is the number being compared between them.
+export OUTPUT="${OUTPUT:-${SCRATCH:-${HERE}}/SOLUT_cylinder_${SLURM_JOB_ID}}"
+
 # Which code is about to run: an installed copy can shadow the repo, so print
 # the resolved path rather than assume the two agree.
 echo "job ${SLURM_JOB_ID}: ${SLURM_NNODES} node(s) x ${SLURM_NTASKS_PER_NODE} task(s) = ${SLURM_NTASKS} process(es)"
 echo "nodes: ${SLURM_STEP_NODELIST:-${SLURM_JOB_NODELIST}}"
+echo "config: ${CONFIG}"
+echo "output: ${OUTPUT}"
 python -c 'from swirl_lm.jax.core import driver; print("driver:", driver.__file__)'
 python -c 'import jax; print("jax:", jax.__version__)'
 
