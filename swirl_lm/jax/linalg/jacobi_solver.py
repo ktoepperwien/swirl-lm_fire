@@ -175,9 +175,10 @@ class JacobiSolver(base_poisson_solver.PoissonSolver):
     if additional_states is None:
       additional_states = {}
 
-    w0, w1, w2, rhs_mod = _generate_weights_and_modified_rhs(
-        rhs, additional_states, self._use_stretched_grid, self._grid_params
-    )
+    with jax.named_scope('weights'):
+      w0, w1, w2, rhs_mod = _generate_weights_and_modified_rhs(
+          rhs, additional_states, self._use_stretched_grid, self._grid_params
+      )
 
     if halo_update_fn is None:
       halo_update_fn = base_poisson_solver._halo_update_homogeneous_neumann(  # pylint: disable=protected-access

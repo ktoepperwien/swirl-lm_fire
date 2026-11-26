@@ -113,9 +113,10 @@ class BaseJacobiSolver:
         iter_p_tuple[0] + 1,
         one_iteration_fn(iter_p_tuple[1]),
     )
-    iterations, p = jax.lax.while_loop(
-        cond_fun=stop_condition, body_fun=body, init_val=(jnp.array(0), p0)
-    )
+    with jax.named_scope('sweeps'):
+      iterations, p = jax.lax.while_loop(
+          cond_fun=stop_condition, body_fun=body, init_val=(jnp.array(0), p0)
+      )
     return {
         X: halo_update_fn(p),
         ITERATIONS: iterations,

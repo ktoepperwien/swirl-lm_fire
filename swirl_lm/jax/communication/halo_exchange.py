@@ -467,17 +467,19 @@ def inplace_halo_exchange(
         bc_low_plane = get_bc_val(bc_low, plane)
         bc_high_plane = get_bc_val(bc_high, halo_width - plane - 1)
 
-        array = _inplace_halo_exchange_1d(
-            array,
-            axis,
-            mesh,
-            bool(periodic),
-            bc_low_plane,
-            bc_high_plane,
-            halo_width,
-            plane,
-            grid_params,
-        )
+        # Per axis, so a profile can tell the inter-node one apart.
+        with jax.named_scope(axis):
+          array = _inplace_halo_exchange_1d(
+              array,
+              axis,
+              mesh,
+              bool(periodic),
+              bc_low_plane,
+              bc_high_plane,
+              halo_width,
+              plane,
+              grid_params,
+          )
 
     return array
 

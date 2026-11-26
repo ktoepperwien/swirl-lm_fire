@@ -150,6 +150,16 @@ def _interior_diagonal(
   return operator(impulse)[centre]
 
 
+def _scoped(name: str, fn):
+  """`fn`, with every op it emits under the named scope `name`."""
+
+  def scoped(*args, **kwargs):
+    with jax.named_scope(name):
+      return fn(*args, **kwargs)
+
+  return scoped
+
+
 def _smooth(
     u: jnp.ndarray,
     b: jnp.ndarray,
@@ -415,8 +425,9 @@ def _restrict(
     The coarse field, half the length along each axis in `axes`.
   """
   coarse = fine
-  for axis in axes:
-    coarse = _restrict_axis(coarse, axis, exchange)
+  with jax.named_scope('restrict'):
+    for axis in axes:
+      coarse = _restrict_axis(coarse, axis, exchange)
   return coarse
 
 
@@ -434,8 +445,9 @@ def _prolongate(
     The fine field, twice the length along each axis in `axes`.
   """
   fine = coarse
-  for axis in axes:
-    fine = _prolongate_axis(fine, axis, exchange)
+  with jax.named_scope('prolongate'):
+    for axis in axes:
+      fine = _prolongate_axis(fine, axis, exchange)
   return fine
 
 
@@ -801,19 +813,24 @@ class MultigridSolver(base_poisson_solver.PoissonSolver):
     """
     plan = _coarsening_plan(shape, self._cores, self._coarsest_shape)
     levels = []
-    operator = fine_operator
+    # Level k's operator is scoped `A<k>`, so a profile shows the nesting:
+    # `A2/A1/A0` is the fine Laplacian inside the level 2 operator.
+    operator = _scoped('A0', fine_operator)
     current = shape
     # One record per coarsening, plus the coarsest.
     for axes in (*plan, ()):
-      levels.append(
-          _Level(current, operator, _interior_diagonal(operator, current), axes)
-      )
+      with jax.named_scope(f'L{len(levels)}'):
+        diagonal = _interior_diagonal(operator, current)
+      levels.append(_Level(current, operator, diagonal, axes))
       if axes:
-        operator = functools.partial(
-            _coarsen_operator,
-            fine_operator=operator,
-            exchange=self._exchange,
-            axes=axes,
+        operator = _scoped(
+            f'A{len(levels)}',
+            functools.partial(
+                _coarsen_operator,
+                fine_operator=operator,
+                exchange=self._exchange,
+                axes=axes,
+            ),
         )
         current = _coarsened(current, axes)
     return levels
@@ -833,7 +850,10 @@ class MultigridSolver(base_poisson_solver.PoissonSolver):
     level = levels[index]
     operator, diagonal = level.operator, level.diagonal
     axes = level.coarsen_axes
-    u = _smooth(u, b, operator, diagonal, self._weight, self._n_smooth)
+    # Phases sit under `L<k>`, closed before descending so levels stay flat.
+    scope = f'L{index}'
+    with jax.named_scope(scope), jax.named_scope('pre_smooth'):
+      u = _smooth(u, b, operator, diagonal, self._weight, self._n_smooth)
 
     if not axes:
       # Nothing coarser to fall back on, so smooth harder instead. Testing
@@ -845,11 +865,15 @@ class MultigridSolver(base_poisson_solver.PoissonSolver):
       # assembled Kronecker factors this is an exact fast-diagonalization
       # solve (pseudo-inverse when singular); otherwise a fixed number of CG
       # iterations.
-      return _smooth(
-          u, b, operator, diagonal, self._weight, self._n_smooth * 4
-      )
+      with jax.named_scope(scope), jax.named_scope('coarsest_smooth'):
+        return _smooth(
+            u, b, operator, diagonal, self._weight, self._n_smooth * 4
+        )
 
-    coarse_residual = _restrict(b - operator(u), self._exchange, axes)
+    with jax.named_scope(scope):
+      with jax.named_scope('residual'):
+        residual = b - operator(u)
+      coarse_residual = _restrict(residual, self._exchange, axes)
     # TODO: The first pre-smoothing sweep on this zero guess computes
     # `operator(0)`; start it as `weight * b / diagonal`. Also replace the
     # Python loops here and over `num_iterations` in `solve` with
@@ -861,8 +885,10 @@ class MultigridSolver(base_poisson_solver.PoissonSolver):
           levels, index + 1, coarse_error, coarse_residual
       )
 
-    u = u + _prolongate(coarse_error, self._exchange, axes)
-    return _smooth(u, b, operator, diagonal, self._weight, self._n_smooth)
+    with jax.named_scope(scope):
+      u = u + _prolongate(coarse_error, self._exchange, axes)
+      with jax.named_scope('post_smooth'):
+        return _smooth(u, b, operator, diagonal, self._weight, self._n_smooth)
 
   def solve(
       self,
@@ -972,11 +998,14 @@ class MultigridSolver(base_poisson_solver.PoissonSolver):
     b = rhs[interior]
     x = p0[interior]
 
-    levels = self._hierarchy(b.shape, fine_operator)
+    with jax.named_scope('setup'):
+      levels = self._hierarchy(b.shape, fine_operator)
     for _ in range(self._num_iterations):
-      x = self._v_cycle(levels, 0, x, b)
+      with jax.named_scope('vcycle'):
+        x = self._v_cycle(levels, 0, x, b)
 
-    residual = b - fine_operator(x)
+    with jax.named_scope('final_residual'):
+      residual = b - fine_operator(x)
     # Restore the halos which were zeroed by `jnp.pad`.
     # `velocity.correction_step` takes a centred difference of the returned
     # field with no exchange in between, so a cleared halo becomes a one-sided

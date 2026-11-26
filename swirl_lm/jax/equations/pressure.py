@@ -1015,7 +1015,10 @@ class Pressure:
               halo_width=halo_width,
           )
 
-        drho = jax.lax.fori_loop(0, self._num_d_rho_filter, filter_body, drho_0)
+        with jax.named_scope('drho_filter'):
+          drho = jax.lax.fori_loop(
+              0, self._num_d_rho_filter, filter_body, drho_0
+          )
         drho_dt = drho * inv_dt
       else:
         # Constant density case (e.g., TGV): no density change.
@@ -1023,22 +1026,26 @@ class Pressure:
 
     # === Build RHS of Poisson equation ===
     # b = div(rho*u)/dt + drho_dt/dt + numerical_consistency
-    divergence_term = self._compute_divergence_term(
-        states['rho_u'],
-        states['rho_v'],
-        states['rho_w'],
-        dt,
-        additional_states,
-    )
+    with jax.named_scope('divergence'):
+      divergence_term = self._compute_divergence_term(
+          states['rho_u'],
+          states['rho_v'],
+          states['rho_w'],
+          dt,
+          additional_states,
+      )
 
-    if self._params.enable_rhie_chow_correction:
-      numerical_consistency = self._rhie_chow_numerical_consistency_correction(
-          states['p'], self._params.grid_spacings
-      )
-    else:
-      numerical_consistency = self._numerical_consistency_correction(
-          states['dp'], states['rho'], additional_states
-      )
+    with jax.named_scope('consistency'):
+      if self._params.enable_rhie_chow_correction:
+        numerical_consistency = (
+            self._rhie_chow_numerical_consistency_correction(
+                states['p'], self._params.grid_spacings
+            )
+        )
+      else:
+        numerical_consistency = self._numerical_consistency_correction(
+            states['dp'], states['rho'], additional_states
+        )
 
     # Source term (mass source). Supports both JAX convention ('mass_source')
     # and TF convention ('src_rho'), as well as source_update_fn for 'rho'.
@@ -1061,13 +1068,14 @@ class Pressure:
 
     halo_update_fn = functools.partial(self._dp_halo_update_fn, mesh=mesh)
 
-    poisson_solution = self._solver.solve(
-        rhs=b,
-        p0=dp0,
-        mesh=mesh,
-        halo_update_fn=halo_update_fn,
-        additional_states=dict(additional_states),
-    )
+    with jax.named_scope('poisson'):
+      poisson_solution = self._solver.solve(
+          rhs=b,
+          p0=dp0,
+          mesh=mesh,
+          halo_update_fn=halo_update_fn,
+          additional_states=dict(additional_states),
+      )
 
     dp: ScalarField = jnp.asarray(poisson_solution[base_poisson_solver.X])
 
@@ -1080,23 +1088,24 @@ class Pressure:
       )
 
     if self._params.log_poisson_residual:
-      self._report_poisson_residual(
-          dp,
-          b,
-          mesh,
-          halo_update_fn,
-          singular=not has_dirichlet_bc,
-          iterations=poisson_solution.get(base_poisson_solver.ITERATIONS),  # pyrefly: ignore[bad-argument-type]
-      )
-      self._report_continuity_residual(
-          states,
-          states_0,
-          dp,
-          divergence_term,
-          b - numerical_consistency,
-          mesh,
-          additional_states,
-      )
+      with jax.named_scope('report'):
+        self._report_poisson_residual(
+            dp,
+            b,
+            mesh,
+            halo_update_fn,
+            singular=not has_dirichlet_bc,
+            iterations=poisson_solution.get(base_poisson_solver.ITERATIONS),  # pyrefly: ignore[bad-argument-type]
+        )
+        self._report_continuity_residual(
+            states,
+            states_0,
+            dp,
+            divergence_term,
+            b - numerical_consistency,
+            mesh,
+            additional_states,
+        )
 
     return {
         'p': states['p'] + dp,

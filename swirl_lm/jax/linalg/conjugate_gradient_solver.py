@@ -185,7 +185,8 @@ def conjugate_gradient_solver(
     i, r, d, x, _, gamma, _ = state
 
     # Compute A*d.
-    a_d = linear_operator(d)
+    with jax.named_scope('operator'):
+      a_d = linear_operator(d)
 
     # Step size: alpha = gamma / <d, A*d>.
     alpha = gamma / dot(d, a_d)
@@ -198,18 +199,21 @@ def conjugate_gradient_solver(
     # the iteration stops on an estimate that no longer reflects the true
     # residual, reporting successful convergence while the solution is far from
     # solving the system.
-    r_next = jax.lax.cond(
-        (i + 1) % _RESIDUAL_RESTART_INTERVAL == 0,
-        lambda: b - linear_operator(x_next),
-        lambda: r_next,
-    )
+    with jax.named_scope('restart'):
+      r_next = jax.lax.cond(
+          (i + 1) % _RESIDUAL_RESTART_INTERVAL == 0,
+          lambda: b - linear_operator(x_next),
+          lambda: r_next,
+      )
 
     if reprojection:
-      x_next = reprojection(x_next)
-      r_next = reprojection(r_next)
+      with jax.named_scope('reprojection'):
+        x_next = reprojection(x_next)
+        r_next = reprojection(r_next)
 
     # Apply preconditioner.
-    q_next = preconditioner(r_next) if preconditioner else r_next
+    with jax.named_scope('preconditioner'):
+      q_next = preconditioner(r_next) if preconditioner else r_next
 
     # gamma_next = <r_next, q_next>.
     gamma_next = dot(r_next, q_next)
@@ -230,7 +234,8 @@ def conjugate_gradient_solver(
     return (i + 1, r_next, d_next, x_next, rho_next, gamma_next, cw_dist_next)
 
   # Run the CG iteration.
-  final_state = jax.lax.while_loop(cg_cond, cg_body, init_state)
+  with jax.named_scope('iterations'):
+    final_state = jax.lax.while_loop(cg_cond, cg_body, init_state)
   iterations, _, _, x_sol, rho_final, _, cw_dist_final = final_state
 
   residual_l2_norm = jnp.sqrt(jnp.real(rho_final))

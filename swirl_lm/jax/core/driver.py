@@ -1132,17 +1132,19 @@ def run_simulation(
 
       # 1. Preprocess.
       if params.apply_preprocess and params.preprocessing_states_update_fn:
-        ess, add = _process_at_step_id(
-            process_fn=params.preprocessing_states_update_fn,
-            essential_states=ess,
-            additional_states=add,
-            step_id=step_id,
-            process_step_id=params.preprocess_step_id,
-            is_periodic=params.preprocess_periodic,
-        )
+        with jax.named_scope('preprocess'):
+          ess, add = _process_at_step_id(
+              process_fn=params.preprocessing_states_update_fn,
+              essential_states=ess,
+              additional_states=add,
+              step_id=step_id,
+              process_step_id=params.preprocess_step_id,
+              is_periodic=params.preprocess_periodic,
+          )
 
       # 2. Update additional states.
-      add = _update_additional_states(ess, add, step_id, params, mesh)
+      with jax.named_scope('additional_states'):
+        add = _update_additional_states(ess, add, step_id, params, mesh)
 
       # 3. Run one simulation step.
       updated_state = sim.step(ess, add, mesh)
@@ -1163,14 +1165,15 @@ def run_simulation(
         # Split updated_state back into essential/additional.
         ess = _stateless_update_if_present(ess, updated_state)
 
-        ess, add = _process_at_step_id(
-            process_fn=params.postprocessing_states_update_fn,
-            essential_states=ess,
-            additional_states=add,
-            step_id=step_id,
-            process_step_id=params.postprocess_step_id,
-            is_periodic=params.postprocess_periodic,
-        )
+        with jax.named_scope('postprocess'):
+          ess, add = _process_at_step_id(
+              process_fn=params.postprocessing_states_update_fn,
+              essential_states=ess,
+              additional_states=add,
+              step_id=step_id,
+              process_step_id=params.postprocess_step_id,
+              is_periodic=params.postprocess_periodic,
+          )
 
         # Merge back.
         updated_state = _stateless_update_if_present(updated_state, ess)
@@ -1201,11 +1204,12 @@ def run_simulation(
       # per cycle. Checkpointing instead is the wrong instrument by orders of
       # magnitude: resolving a shedding period needs a sample every few tens
       # of steps, and a full checkpoint is tens of megabytes.
-      sample = (
-          jnp.zeros((), jnp.float32)
-          if probe_fn is None
-          else jnp.asarray(probe_fn(new_state), jnp.float32)
-      )
+      with jax.named_scope('probe'):
+        sample = (
+            jnp.zeros((), jnp.float32)
+            if probe_fn is None
+            else jnp.asarray(probe_fn(new_state), jnp.float32)
+        )
       return (new_state, step_id + 1), sample
 
     init_carry = (state, init_step_id)

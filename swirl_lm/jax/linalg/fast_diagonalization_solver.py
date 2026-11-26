@@ -305,7 +305,8 @@ class FastDiagonalizationSolver(base_poisson_solver.PoissonSolver):
     rhs_interior = rhs[hw:-hw, hw:-hw, hw:-hw]
 
     # Solve the interior system.
-    solution_interior = self._solve_fn(rhs_interior)
+    with jax.named_scope('transform'):
+      solution_interior = self._solve_fn(rhs_interior)
 
     # Pad the solution back with zeros in the halo region.
     solution = jnp.pad(

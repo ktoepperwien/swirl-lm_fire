@@ -354,30 +354,35 @@ class Simulation:
     Returns:
       Updated states: rho, u, v, w, p, and transport scalars.
     """
-    if self._has_scalars:
-      self.scalars.prestep(additional_states)
-    self.velocity.prestep(additional_states, mesh)
-    self.pressure.prestep(additional_states)
+    # One named scope per stage, so a profile attributes device time to it.
+    with jax.named_scope('prestep'):
+      if self._has_scalars:
+        self.scalars.prestep(additional_states)
+      self.velocity.prestep(additional_states, mesh)
+      self.pressure.prestep(additional_states)
 
-    states_0 = self._init_states(states, additional_states, mesh)
+    with jax.named_scope('init_states'):
+      states_0 = self._init_states(states, additional_states, mesh)
 
     def update_step(
         states_k: dict[str, ScalarField],
     ) -> dict[str, ScalarField]:
       """One predictor-corrector iteration."""
       # Step 0: Recompute momentum from current velocity and mid-point density.
-      rho_mid = 0.5 * (states_k[_KEY_RHO] + states_0[_KEY_RHO])
-      states_k[_KEY_RHO_U] = rho_mid * states_k[_KEY_U]
-      states_k[_KEY_RHO_V] = rho_mid * states_k[_KEY_V]
-      states_k[_KEY_RHO_W] = rho_mid * states_k[_KEY_W]
+      with jax.named_scope('momentum'):
+        rho_mid = 0.5 * (states_k[_KEY_RHO] + states_0[_KEY_RHO])
+        states_k[_KEY_RHO_U] = rho_mid * states_k[_KEY_U]
+        states_k[_KEY_RHO_V] = rho_mid * states_k[_KEY_V]
+        states_k[_KEY_RHO_W] = rho_mid * states_k[_KEY_W]
 
       # Step 1: Scalar prediction.
       # IBM constraints are applied internally by scalars.prediction_step.
       mass_source = None
       if self._has_scalars:
-        scalar_prediction, mass_source = self.scalars.prediction_step(
-            states_k, states_0, additional_states, mesh
-        )
+        with jax.named_scope('scalar_prediction'):
+          scalar_prediction, mass_source = self.scalars.prediction_step(
+              states_k, states_0, additional_states, mesh
+          )
         states_k.update(scalar_prediction)
 
       # Step 2: Density update from equation of state.
@@ -390,33 +395,35 @@ class Simulation:
       )
 
       if has_variable_density:
-        if (
-            self._params.solver_mode
-            == thermodynamics_pb2.Thermodynamics.LOW_MACH
-        ):
-          rho, drho = self.thermodynamics.update_density(
-              states_k, additional_states, mesh, states_0
-          )
-          rho_thermal = self.thermodynamics.update_thermal_density(
-              states_k, additional_states
-          )
-          states_k[_KEY_RHO] = rho
-          states_k['rho_thermal'] = rho_thermal
-          states_k['drho'] = drho
-        else:
-          # For ANELASTIC, compute thermal density for buoyancy.
-          rho_thermal = self.thermodynamics.update_thermal_density(
-              states_k, additional_states
-          )
-          states_k['rho_thermal'] = rho_thermal
+        with jax.named_scope('density'):
+          if (
+              self._params.solver_mode
+              == thermodynamics_pb2.Thermodynamics.LOW_MACH
+          ):
+            rho, drho = self.thermodynamics.update_density(
+                states_k, additional_states, mesh, states_0
+            )
+            rho_thermal = self.thermodynamics.update_thermal_density(
+                states_k, additional_states
+            )
+            states_k[_KEY_RHO] = rho
+            states_k['rho_thermal'] = rho_thermal
+            states_k['drho'] = drho
+          else:
+            # For ANELASTIC, compute thermal density for buoyancy.
+            rho_thermal = self.thermodynamics.update_thermal_density(
+                states_k, additional_states
+            )
+            states_k['rho_thermal'] = rho_thermal
 
       # Step 2 (continued): Update pressure halos with flow-dependent BCs.
       # In TF this is part of the density update step: after density is
       # corrected, pressure halos are re-derived from the current buoyancy
       # field using rho_mid (not rho_k) to prevent spurious forcing.
-      pressure_halos = self.pressure.update_pressure_halos(
-          states_k, additional_states, mesh
-      )
+      with jax.named_scope('pressure_halos'):
+        pressure_halos = self.pressure.update_pressure_halos(
+            states_k, additional_states, mesh
+        )
       states_k.update(pressure_halos)
 
       # Step 3: Scalar correction (Low Mach only).
@@ -431,17 +438,19 @@ class Simulation:
           and self._params.solver_mode
           == thermodynamics_pb2.Thermodynamics.LOW_MACH
       ):
-        scalar_correction = self.scalars.correction_step(
-            states_k, additional_states, mesh
-        )
+        with jax.named_scope('scalar_correction'):
+          scalar_correction = self.scalars.correction_step(
+              states_k, additional_states, mesh
+          )
         states_k.update(scalar_correction)
 
       # Step 4: Velocity prediction.
       # SGS turbulent viscosity is computed internally by velocity.
       # IBM constraints are applied internally after halo exchange.
-      velocity_prediction = self.velocity.prediction_step(
-          states_k, states_0, additional_states, mesh
-      )
+      with jax.named_scope('velocity_prediction'):
+        velocity_prediction = self.velocity.prediction_step(
+            states_k, states_0, additional_states, mesh
+        )
       states_k.update(velocity_prediction)
 
       # Step 5: Pressure solve.
@@ -450,16 +459,18 @@ class Simulation:
       if mass_source is not None:
         pressure_additional = dict(additional_states)
         pressure_additional['mass_source'] = mass_source
-      pressure_step = self.pressure.step(
-          states_k, states_0, pressure_additional, mesh
-      )
+      with jax.named_scope('pressure'):
+        pressure_step = self.pressure.step(
+            states_k, states_0, pressure_additional, mesh
+        )
       states_k.update(pressure_step)
 
       # Step 6: Velocity correction.
       # IBM constraints are applied internally before halo exchange.
-      velocity_correction = self.velocity.correction_step(
-          states_k, states_0, additional_states, mesh
-      )
+      with jax.named_scope('velocity_correction'):
+        velocity_correction = self.velocity.correction_step(
+            states_k, states_0, additional_states, mesh
+        )
       states_k.update(velocity_correction)
 
       return states_k
